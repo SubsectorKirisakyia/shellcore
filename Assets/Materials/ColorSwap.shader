@@ -19,6 +19,7 @@ Shader "Sprites/ColorSwap"
         // http://answers.unity3d.com/questions/980924/ui-mask-with-shader.html
         
         _Color ("Tint", Color) = (1,1,1,1)
+        _Greyscale("Greyscale", Range(0, 1)) = 1
         [MaterialToggle] PixelSnap ("Pixel snap", Float) = 0
         [HideInInspector] _RendererColor ("RendererColor", Color) = (1,1,1,1)
         [HideInInspector] _Flip ("Flip", Vector) = (1,1,1,1)
@@ -84,15 +85,121 @@ Shader "Sprites/ColorSwap"
 				return OUT;
 			}
 
+            //HSB RGB
+
+			float3 hsv_to_rgb(float3 HSV)
+        	{
+                float3 RGB = HSV.z;
+           
+                   float var_h = HSV.x * 6;
+                   float var_i = floor(var_h);   // Or ... var_i = floor( var_h )
+                   float var_1 = HSV.z * (1.0 - HSV.y);
+                   float var_2 = HSV.z * (1.0 - HSV.y * (var_h-var_i));
+                   float var_3 = HSV.z * (1.0 - HSV.y * (1-(var_h-var_i)));
+                   if      (var_i == 0) { RGB = float3(HSV.z, var_3, var_1); }
+                   else if (var_i == 1) { RGB = float3(var_2, HSV.z, var_1); }
+                   else if (var_i == 2) { RGB = float3(var_1, HSV.z, var_3); }
+                   else if (var_i == 3) { RGB = float3(var_1, var_2, HSV.z); }
+                   else if (var_i == 4) { RGB = float3(var_3, var_1, HSV.z); }
+                   else                 { RGB = float3(HSV.z, var_1, var_2); }
+           
+           		return (RGB);
+        	}
+
+			float3 rgb_to_hsv(float3 RGB)
+        	{
+                float3 HSV;
+           
+				float minChannel, maxChannel;
+				if (RGB.x > RGB.y) {
+					maxChannel = RGB.x;
+					minChannel = RGB.y;
+				}
+				else {
+					maxChannel = RGB.y;
+					minChannel = RGB.x;
+				}
+         
+				if (RGB.z > maxChannel) maxChannel = RGB.z;
+				if (RGB.z < minChannel) minChannel = RGB.z;
+           
+                HSV.xy = 0;
+                HSV.z = maxChannel;
+                float delta = maxChannel - minChannel;             //Delta RGB value
+                if (delta != 0) {                    // If gray, leave H  S at zero
+                   HSV.y = delta / HSV.z;
+                   float3 delRGB;
+                   delRGB = (HSV.zzz - RGB + 3*delta) / (6.0*delta);
+                   if      ( RGB.x == HSV.z ) HSV.x = delRGB.z - delRGB.y;
+                   else if ( RGB.y == HSV.z ) HSV.x = ( 1.0/3.0) + delRGB.x - delRGB.z;
+                   else if ( RGB.z == HSV.z ) HSV.x = ( 2.0/3.0) + delRGB.y - delRGB.x;
+                }
+                return (HSV);
+        	} // Reverse order? For converting rgb to hsv...
+
+      		struct Input {
+          		float2 uv_MainTex;
+      		};
+     
+      		float _HueShift;
+			
+			//*HSB RGB
+            half _Greyscale;
+
 			fixed4 SpriteFrag2(v2f IN) : SV_Target
 			{
-				fixed4 c = SampleSpriteTexture (IN.texcoord);
+                fixed4 c = SampleSpriteTexture (IN.texcoord);
+                float3 HSV, RGBin, RGBbase;
+                RGBin.r = IN.color.r;
+				RGBin.g = IN.color.g;
+				RGBin.b = IN.color.b;
+                RGBbase.r = c.r;
+                RGBbase.g = c.g;
+                RGBbase.b = c.b;
+                fixed3 hsvIN = rgb_to_hsv(RGBin);
+                fixed3 hsvBASE = rgb_to_hsv(RGBbase);
+                hsvBASE.x = hsvIN.x;
+                fixed3 RGBout = hsv_to_rgb(hsvBASE);
                 c.a *= IN.color.a;
-				c.rgb *= c.a;
+                if(c.a == 0.01000315){ // For normal appearance of EP1 style core
+                    if (c.g > 0 && c.r >= 0.99 && c.b >= 0.99){
+                        c.a = 1;
+                        c.rgb = lerp(c.rgb, dot(c.rgb, float3(0.3, 0.59, 0.11)), _Greyscale);
+                        c.rgb *= c.a;
+                    } else if (c.g > 0.9 && c.r > 0.9 && c.b > 0.9){
+                        c.a = 1;
+                        c.rgb *= c.a;
+                    } else {
+                        c.a = 0;
+                        c.rgb *= c.a;
+                    }
+                } else if(c.a == 0.01000314) { // For stealth appearance of EP1 style core
+                    if (c.g > 0 && c.r >= 0.99 && c.b >= 0.99){
+                        c.a = 0.2;
+                        c.rgb = lerp(c.rgb, dot(c.rgb, float3(0.3, 0.59, 0.11)), _Greyscale);
+                        c.rgb *= c.a;
+                    } else if (c.g > 0.9 && c.r > 0.9 && c.b > 0.9){
+                        c.a = 0.2;
+                        c.rgb *= c.a;
+                    } else {
+                        c.a = 0;
+                        c.rgb *= c.a;
+                    }
+                } else {
+                    c.rgb *= c.a;
+                }
+
 				float min = c.a * 0.99f;
-				if (c.r > min && c.g < 0.01f && min)
+
+				if (c.r > min && c.g < 0.9f && min)
 				{
-					c = IN.color * c.a;
+                        fixed4 conColor;
+				        conColor.r = RGBout.x;
+                        conColor.g = RGBout.y;
+                        conColor.b = RGBout.z;
+                        conColor.a = c.a;
+                        conColor.rgb *= conColor.a;
+					    c = conColor;
 				}
 
                 return c;
