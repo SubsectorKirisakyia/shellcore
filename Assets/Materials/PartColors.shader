@@ -158,11 +158,8 @@ Shader "Sprites/PartColors"
 					{
 						c *= IN.color;
 					}
-<<<<<<< Updated upstream
-					else if (c.g > (0.25 * IN.color.a) && c.b > (0.25 * IN.color.a) && c.r <= (1 * IN.color.a) && c.a > 0){
-=======
+
 					else if (c.g > (0.225 * IN.color.a) && c.b > (0.225 * IN.color.a) && c.r <= (1 * IN.color.a) && c.a > 0){
->>>>>>> Stashed changes
 						Color.r = rgb.x;
 						Color.g = rgb.y;
 						Color.b = rgb.z;
