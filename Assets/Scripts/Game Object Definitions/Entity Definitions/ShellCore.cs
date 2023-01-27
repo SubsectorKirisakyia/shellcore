@@ -23,8 +23,23 @@ public class ShellCore : AirCraft, IHarvester, IOwner
 
     private List<EntityBlueprint.PartInfo> partsToRepairAdd = new List<EntityBlueprint.PartInfo>();
 
+    private Coroutine yardRepairCoroutine;
+    private Coroutine addRandomPartsCoroutine;
 
-    public IEnumerator StartYardRepair()
+    public void StartYardRepairCoroutine()
+    {
+        yardRepairCoroutine = StartCoroutine(StartYardRepair());
+    }
+
+    public void StopYardRepairCoroutine()
+    {
+        if (yardRepairCoroutine != null)
+        {
+            StopCoroutine(yardRepairCoroutine);
+        }
+    }
+
+    private IEnumerator StartYardRepair()
     {
         isYardRepairing = true;
         foreach (var part in parts)
@@ -138,10 +153,15 @@ public class ShellCore : AirCraft, IHarvester, IOwner
         }
     }
 
+    public void KillShellCore() 
+    {
+        OnDeath();
+    }
+
     protected override void OnDeath()
     {
         tractor.SetTractorTarget(null);
-        StopCoroutine(StartYardRepair());
+        StopYardRepairCoroutine();
         base.OnDeath();
     }
 
@@ -161,20 +181,28 @@ public class ShellCore : AirCraft, IHarvester, IOwner
         // initialize instance fields
         base.Start(); // base start
 
-        ai = GetAI();
-        if (ai && ai.getMode() == AirCraftAI.AIMode.Inactive)
-        {
-            if (sectorMngr.GetCurrentType() == Sector.SectorType.BattleZone)
-            {
-                ai.setMode(AirCraftAI.AIMode.Battle);
-            }
-            else
-            {
-                ai.setMode(AirCraftAI.AIMode.Inactive);
-            }
+        InitAI();
 
-            ai.allowRetreat = true;
+        if (FactionManager.DoesFactionGrowRandomParts(faction) && addRandomPartsCoroutine == null)
+        {
+            addRandomPartsCoroutine = StartCoroutine(AddRandomParts());
         }
+    }
+
+    private void InitAI()
+    {
+        ai = GetAI();
+        if (!ai || ai.getMode() != AirCraftAI.AIMode.Inactive) { return; }
+        if (sectorMngr.GetCurrentType() == Sector.SectorType.BattleZone)
+        {
+            ai.setMode(AirCraftAI.AIMode.Battle);
+        }
+        else
+        {
+            ai.setMode(AirCraftAI.AIMode.Inactive);
+        }
+
+        ai.allowRetreat = true;
     }
 
     protected override void OnDestroy()
@@ -226,7 +254,7 @@ public class ShellCore : AirCraft, IHarvester, IOwner
         
             if (gotAwayFromYard)
             {
-                StopCoroutine(StartYardRepair());
+                StopYardRepairCoroutine();
                 FinalizeRepair();
             }
         }
@@ -326,11 +354,11 @@ public class ShellCore : AirCraft, IHarvester, IOwner
     public bool HasPartsDamagedOrDestroyed()
     {
         // Cheks if has damaged parts
-        if (parts.Exists(p => p.name != "Shell Sprite" && p.IsDamaged()))
+        if (parts.Exists(p => p && p.name != "Shell Sprite" && p.IsDamaged()))
             return true;
 
         // Check if has parts destroyed
-        if (blueprint.parts.Exists(p => !parts.Exists(part => part.info.Equals(p))))
+        if (blueprint.parts.Exists(p => !parts.Exists(part => part && part.info.Equals(p))))
             return true;
 
         return false;

@@ -57,6 +57,19 @@ public abstract class Ability : MonoBehaviour
 
     public bool isEnabled { get; set; } = true;
 
+    bool autoCast = false;
+    public bool AutoCast
+    {
+        get { return autoCast; }
+        set {
+            if ((GetAbilityType() == AbilityHandler.AbilityTypes.Skills && PlayerPrefs.GetString("AllowAutocastSkills", "False") == "True") ||
+                    ID == AbilityID.SpawnDrone)
+            {
+                autoCast = value;
+            }
+        }
+    }
+
     public virtual void SetTier(int abilityTier)
     {
         if (abilityTier > 3 || abilityTier < 0)
@@ -266,7 +279,6 @@ public abstract class Ability : MonoBehaviour
         // If (NPC or (Player and not interacting)) and enough energy
         if (State == AbilityState.Ready && !(Core is PlayerCore player && player.GetIsInteracting()) && Core.GetHealth()[2] >= energyCost)
         {
-            Core.MakeBusy(); // make core busy
             Core.TakeEnergy(energyCost); // remove the energy
             startTime = Time.time; // Set activation time
             charging = true;
@@ -290,6 +302,11 @@ public abstract class Ability : MonoBehaviour
             return; // Part has been destroyed, ability can't be used
         }
 
+        if (autoCast)
+        {
+            AutoCastTick();
+        }
+
         AbilityState prevState = State;
         UpdateState();
 
@@ -304,6 +321,22 @@ public abstract class Ability : MonoBehaviour
         else if (State == AbilityState.Cooldown && prevState != AbilityState.Cooldown && prevState != AbilityState.Ready)
         {
             Deactivate(); // deactivate the ability
+        }
+    }
+
+    private void AutoCastTick()
+    {
+        if (!(Core is PlayerCore playerCore) ||
+            State != AbilityState.Ready ||
+            playerCore.GetHealth()[2] < energyCost)
+        {
+            return;
+        }
+
+        bool allowSkillActivation = GetAbilityType() == AbilityHandler.AbilityTypes.Skills && PlayerPrefs.GetString("AllowAutocastSkills", "False") == "True";
+        bool allowDroneActivation = ID == AbilityID.SpawnDrone && playerCore.GetUnitsCommanding().Count < playerCore.GetTotalCommandLimit();
+        if (allowSkillActivation || allowDroneActivation) {
+            Activate();
         }
     }
 

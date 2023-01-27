@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -29,11 +30,12 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
     protected Collider2D hitbox; // the hitbox of the entity (excluding extra parts)
     protected TargetingSystem targeter; // the TargetingSystem of the entity
     protected bool isInCombat; // whether the entity is in combat or not
-    protected bool isBusy; // whether the entity is busy or not
     protected bool isDead; // whether the entity is currently dead or not
+    protected bool isWarpUninteractable; // whether the entity is uninteractable because it recently warped
     protected float busyTimer; // the time since the entity was last set to busy
     protected float combatTimer; // the time since the entity was last set into combat
     protected float deathTimer; // the time since the entity last died;
+    protected float warpUninteractableTimer; // the time since the entity last warped;
     protected GameObject explosionCirclePrefab; // prefabs for death explosion
     protected GameObject explosionLinePrefab;
     protected GameObject respawnImplosionPrefab;
@@ -58,7 +60,6 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
     public EntityBlueprint blueprint; // blueprint of entity containing parts
     public Vector3 spawnPoint;
     public Dialogue dialogue; // dialogue of entity
-    protected bool isDraggable; // is the entity draggable?
     protected Draggable draggable; // associated draggable
     protected bool initialized; // is the entity safe to call update() on?
     public EntityCategory category = EntityCategory.Unset; // these two fields will be changed via hardcoding in child class files
@@ -152,6 +153,47 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
             UpdateInvisibleGraphics();
         }
     }
+
+    [SerializeField]
+    private int healAuraStacks;
+
+    public int HealAuraStacks
+    {
+        get { return healAuraStacks; }
+        set
+        {
+            healAuraStacks = value;
+        }
+    }
+
+    [SerializeField]
+    private int speedAuraStacks;
+
+    public int SpeedAuraStacks
+    {
+        get { return speedAuraStacks; }
+        set
+        {
+            speedAuraStacks = value;
+        }
+    }
+
+
+    [SerializeField]
+    private int energyAuraStacks;
+
+    public int EnergyAuraStacks
+    {
+        get { return energyAuraStacks; }
+        set
+        {
+            energyAuraStacks = value;
+        }
+    }
+
+
+
+
 
     // Performs calculations based on current control and shell max stats to determine final health
     private void CalculateMaxHealth()
@@ -266,11 +308,11 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
     {
         if (TaskManager.interactionOverrides.ContainsKey(ID) && TaskManager.interactionOverrides[ID].Count > 0)
         {
-            TaskManager.interactionOverrides[ID].Peek().Invoke();
+            TaskManager.interactionOverrides[ID].Peek().action.Invoke();
         }
         else if (DialogueSystem.interactionOverrides.ContainsKey(ID) && DialogueSystem.interactionOverrides[ID].Count > 0)
         {
-            DialogueSystem.interactionOverrides[ID].Peek().Invoke();
+            DialogueSystem.interactionOverrides[ID].Peek().action.Invoke();
         }
         else
         {
@@ -287,7 +329,19 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
         if (ID != null && TaskManager.interactionOverrides.ContainsKey(ID)
                        && TaskManager.interactionOverrides[ID].Count > 0)
         {
-            interactible = true;
+            while (TaskManager.interactionOverrides[ID].Count > 0)
+            {
+                InteractAction action = TaskManager.interactionOverrides[ID].Peek();
+                if ((action.traverser as MissionTraverser).taskHash == action.taskHash)
+                {
+                    interactible = true;
+                    break;
+                }
+                else
+                {
+                    TaskManager.interactionOverrides[ID].Pop();
+                }
+            }
         }
 
         if (ID != null && DialogueSystem.interactionOverrides.ContainsKey(ID)
@@ -297,6 +351,11 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
         }
 
         if (isPathing || DialogueSystem.isInCutscene)
+        {
+            interactible = false;
+        }
+
+        if (this.isWarpUninteractable)
         {
             interactible = false;
         }
@@ -654,6 +713,27 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
         }
     }
 
+    public void AttachRandomPart() 
+    {
+        EntityBlueprint.PartInfo info = ResourceManager.Instance.GetRandomPart();
+        ShellPart part = parts[Random.Range(0, parts.Count)];
+        info.location = part.info.location;
+        info.location += new Vector2(Random.Range(-0.1F, 0.1F), Random.Range(-0.1F, 0.1F));
+        SetUpPart(info);
+    }
+
+
+
+    protected IEnumerator AddRandomParts()
+    {
+        while (true) 
+        {
+            while (GetIsDead()) yield return null;
+            AttachRandomPart();
+            yield return new WaitForSeconds(2F);
+        }
+    }
+
     protected void ResetHealths()
     {
         blueprint.shellHealth.CopyTo(maxHealth, 0);
@@ -778,7 +858,6 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
     /// </summary>
     protected virtual void OnDeath()
     {
-        entityBody.velocity = Vector2.zero;
         // set death, interactibility and immobility
         IsInvisible = false;
         Collider2D[] colliders = GetComponentsInChildren<Collider2D>(true);
@@ -826,6 +905,7 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
         }
 
         DetachAllParts();
+        entityBody.velocity = Vector2.zero;
 
         var BZM = SectorManager.instance?.GetComponent<BattleZoneManager>();
 
@@ -875,7 +955,6 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
         maxHealth = new float[3];
         regenRate = new float[3];
         parts = new List<ShellPart>();
-        isBusy = false;
         isInCombat = false;
 
         AttemptAddComponents();
@@ -890,9 +969,9 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
             AIData.interactables.Add(this);
         }
 
-        if (this is IVendor)
+        if (this is IVendor vendor)
         {
-            AIData.vendors.Add(this);
+            AIData.vendors.Add(vendor);
         }
     }
 
@@ -908,9 +987,9 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
             AIData.interactables.Remove(this);
         }
 
-        if (this is IVendor)
+        if (this is IVendor vendor)
         {
-            AIData.vendors.Remove(this);
+            AIData.vendors.Remove(vendor);
         }
 
         SectorManager.instance.RemoveObject(ID, gameObject);
@@ -978,6 +1057,42 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
         }
     }
 
+    protected void UpdateAuras()
+    {
+        bool speedAuraAtZero = SpeedAuraStacks == 0;
+        healAuraStacks = 0;
+        energyAuraStacks = 0;
+        SpeedAuraStacks = 0;
+
+        foreach (var aura in AIData.auras)
+        {
+            if (aura.Core.faction != faction) continue;
+            if (Vector2.Distance(aura.transform.position, transform.position) > aura.GetRange()) continue;
+            switch (aura.type)
+            {
+                case TowerAura.AuraType.Heal:
+                    healAuraStacks++;
+                    break;
+                case TowerAura.AuraType.Speed:
+                    SpeedAuraStacks++;
+                    if (speedAuraAtZero && this as Craft)
+                    {
+                        (this as Craft).CalculatePhysicsConstants();
+                    }
+                    break;
+                case TowerAura.AuraType.Energy:
+                    energyAuraStacks++;
+                    break;
+            }
+        }
+
+        if (SpeedAuraStacks == 0 && !speedAuraAtZero && this as Craft)
+        {
+            (this as Craft).CalculatePhysicsConstants();
+        }
+    }
+
+
     /// <summary>
     /// Used to update the state of the craft- regeneration, timers, etc
     /// </summary>
@@ -985,6 +1100,7 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
     {
         DeathHandler();
         UpdateInteractible();
+        UpdateAuras();
         if (isDead) // if the craft is dead
         {
             GetComponent<SpriteRenderer>().enabled = false; // disable craft sprite
@@ -1012,23 +1128,13 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
         {
             // not dead, continue normal state changing
             // regenerate
-            RegenHealth(ref currentHealth[0], regenRate[0], maxHealth[0]);
-            RegenHealth(ref currentHealth[1], regenRate[1], maxHealth[1]);
-            RegenHealth(ref currentHealth[2], regenRate[2], maxHealth[2]);
+            RegenHealth(ref currentHealth[0], HealAuraStacks > 0 ? regenRate[0] * 20F : regenRate[0], maxHealth[0]);
+            RegenHealth(ref currentHealth[1], HealAuraStacks > 0 ? regenRate[1] * 20F : regenRate[1], maxHealth[1]);
+            RegenHealth(ref currentHealth[2], EnergyAuraStacks > 0 ? regenRate[2] * 50F : regenRate[2], maxHealth[2]);
 
             if (weaponGCDTimer < weaponGCD)
             {
                 weaponGCDTimer += Time.deltaTime; // tick GCD timer
-            }
-
-            // check if busy state changing is due
-            if (busyTimer > 5)
-            {
-                isBusy = false; // change state if it is
-            }
-            else
-            {
-                busyTimer += Time.deltaTime; // otherwise continue ticking timer
             }
 
             // check if combat state changing is due
@@ -1039,6 +1145,16 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
             else
             {
                 combatTimer += Time.deltaTime; // otherwise continue ticking timer
+            }
+
+            // check if uninteractable state changing is due
+            if (warpUninteractableTimer > 3)
+            {
+                isWarpUninteractable = false; // change state if it is
+            }
+            else
+            {
+                warpUninteractableTimer += Time.deltaTime; // otherwise continue ticking timer
             }
 
             if (RangeCheckDelegate != null && PlayerCore.Instance)
@@ -1086,23 +1202,6 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
         parts.Remove(part);
     }
 
-    /// <summary>
-    /// Make the craft busy
-    /// </summary>
-    public void MakeBusy()
-    {
-        isBusy = true;
-        busyTimer = 0;
-    }
-
-    /// <summary>
-    /// Get whether the craft is busy or not
-    /// </summary>
-    /// <returns>true if the craft is busy, false otherwise</returns>
-    public bool GetIsBusy()
-    {
-        return isBusy;
-    }
 
     /// <summary>
     /// Set the craft into combat
@@ -1110,8 +1209,6 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
     public void SetIntoCombat()
     {
         isInCombat = true;
-        isBusy = true;
-        busyTimer = 0; // reset timers
         combatTimer = 0;
     }
 
@@ -1122,6 +1219,14 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
     public bool GetIsInCombat()
     {
         return isInCombat;
+    }
+
+    /// <summary>
+    /// Set the craft into uninteractable state because it warped
+    /// </summary>
+    public void SetWarpUninteractable() {
+        isWarpUninteractable = true;
+        warpUninteractableTimer = 0;// reset timer
     }
 
     /// <summary>

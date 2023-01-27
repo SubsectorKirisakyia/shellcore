@@ -273,6 +273,25 @@ public class DevConsoleScript : MonoBehaviour
                 updateLog = true;
                 textBox.text += "\n<color=lime>You're probably not gonna be able to see this.</color>";
             }
+            else if (command.Equals("killp", StringComparison.CurrentCultureIgnoreCase))
+            {
+                foreach (ShellCore partyMember in PartyManager.instance.partyMembers)
+                {
+                    partyMember.KillShellCore();
+                }
+                textBox.text += "\n<color=lime>Killing all party members...</color>";
+            }
+            else if (command.StartsWith("addp ", StringComparison.CurrentCultureIgnoreCase))
+            {
+                string entityID = command.Substring(5).Trim();
+                if (!PlayerCore.Instance.cursave.unlockedPartyIDs.Contains(entityID))
+                {
+                    PlayerCore.Instance.cursave.unlockedPartyIDs.Add(entityID);
+                }
+
+                PartyManager.instance.AssignBackend(entityID);
+                textBox.text += $"\n<color=lime>{entityID}</color>";
+            }
             else if (command.Equals("Damacy", StringComparison.CurrentCultureIgnoreCase))
             {
                 /* Adds all part/ability/tier/drone permutations to the player's inventory.*/
@@ -296,11 +315,11 @@ public class DevConsoleScript : MonoBehaviour
                 info = new EntityBlueprint.PartInfo();
                 foreach (string name in ResourceManager.allPartNames)
                 {
-                    for (int i = 0; i < 38; i++)
+                    for (int i = 0; i < 42; i++)
                     {
                         info.partID = name;
                         info.abilityID = i;
-                        if ((info.abilityID >= 14 && info.abilityID <= 16) || info.abilityID == 3)
+                        if ((info.abilityID >= 14 && info.abilityID <= 16) || info.abilityID == 3 || info.abilityID == 39)
                         {
                             info.abilityID = 0;
                         }
@@ -311,7 +330,7 @@ public class DevConsoleScript : MonoBehaviour
                             info.secondaryData = JsonUtility.ToJson(data);
                         }
 
-                        if (info.abilityID == 0 || info.abilityID == 10 || info.abilityID == 21)
+                        if (info.abilityID == 0 || info.abilityID == 10 || info.abilityID == 21 || info.abilityID == 24 || info.abilityID == 27 || info.abilityID == 28 || info.abilityID == 29 || info.abilityID == 41)
                         {
                             info.tier = 0;
                         }
@@ -332,6 +351,10 @@ public class DevConsoleScript : MonoBehaviour
             {
                 NodeEditorFramework.Standard.WinSiegeCondition.OnSiegeWin.Invoke(SectorManager.instance.current.sectorName);
             }
+            else if (command.Equals("Win bz", StringComparison.CurrentCultureIgnoreCase))
+            {
+                NodeEditorFramework.Standard.WinBattleCondition.OnBattleWin.Invoke(SectorManager.instance.current.sectorName);
+            }
             else if (command.Equals("No limits", StringComparison.CurrentCultureIgnoreCase))
             {
                 if (PlayerCore.Instance?.cursave != null)
@@ -346,6 +369,14 @@ public class DevConsoleScript : MonoBehaviour
                 {
                     PlayerCore.Instance.SetWeaponGCD(0);
                     textBox.text += "\n<color=lime>Heathen.</color>";
+                }
+            }
+            else if (command.Equals("Stuff is broken", StringComparison.CurrentCultureIgnoreCase))
+            {
+                if (PlayerCore.Instance)
+                {
+                    TaskDisplayScript.EditMode = true;
+                    textBox.text += "\n<color=lime>Surely a really bad bug went off and you don't just want to skip content we worked so hard to make, right?</color>";
                 }
             }
         }

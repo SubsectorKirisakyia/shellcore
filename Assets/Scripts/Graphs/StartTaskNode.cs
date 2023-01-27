@@ -101,8 +101,23 @@ namespace NodeEditorFramework.Standard
                 float r, g, b;
                 GUILayout.BeginHorizontal();
                 r = RTEditorGUI.FloatField(dialogueColor.r);
+                if (dialogueColor.r < 0 || dialogueColor.r > 1)
+                {
+                    r = RTEditorGUI.FloatField(dialogueColor.r = 1);
+                    Debug.LogWarning("Can't register this numbers!");
+                }
                 g = RTEditorGUI.FloatField(dialogueColor.g);
+                if (dialogueColor.g < 0 || dialogueColor.g > 1)
+                {
+                    g = RTEditorGUI.FloatField(dialogueColor.g = 1);
+                    Debug.LogWarning("Can't register this numbers!");
+                }
                 b = RTEditorGUI.FloatField(dialogueColor.b);
+                if (dialogueColor.b < 0 || dialogueColor.b > 1)
+                {
+                    b = RTEditorGUI.FloatField(dialogueColor.b = 1);
+                    Debug.LogWarning("Can't register this numbers!");
+                }
                 GUILayout.EndHorizontal();
                 dialogueColor = new Color(r, g, b);
             }
@@ -119,14 +134,14 @@ namespace NodeEditorFramework.Standard
             GUILayout.BeginHorizontal();
             declineResponse = GUILayout.TextArea(declineResponse, GUILayout.Width(200f));
             GUILayout.EndHorizontal();
-            GUILayout.Label("Objective list:");
+            GUILayout.Label("Objective List:");
             objectiveList = GUILayout.TextArea(objectiveList, GUILayout.Width(200f));
-            GUILayout.Label("Credit reward:");
+            GUILayout.Label("Credit Reward:");
             creditReward = RTEditorGUI.IntField(creditReward, GUILayout.Width(208f));
-            GUILayout.Label("Reputation reward:");
+            GUILayout.Label("Reputation Reward:");
 
             reputationReward = RTEditorGUI.IntField(reputationReward, GUILayout.Width(208f));
-            GUILayout.Label("Shard reward:");
+            GUILayout.Label("Shard Reward:");
             shardReward = RTEditorGUI.IntField(shardReward, GUILayout.Width(208f));
 
             partReward = RTEditorGUI.Toggle(partReward, "Part reward", GUILayout.Width(200f));
@@ -186,7 +201,7 @@ namespace NodeEditorFramework.Standard
             height += GUI.skin.textArea.CalcHeight(new GUIContent(dialogueText), 50f);
 
             GUILayout.BeginHorizontal();
-            GUILayout.Label("Entity ID for Confirmed Dialogue");
+            GUILayout.Label("Entity ID for Confirmed Dialogue:");
             GUILayout.EndHorizontal();
             GUILayout.BeginHorizontal();
             entityIDforConfirmedResponse = GUILayout.TextField(entityIDforConfirmedResponse, GUILayout.Width(200f));
@@ -200,6 +215,7 @@ namespace NodeEditorFramework.Standard
         public void OnClick(int index)
         {
             DialogueSystem.OnDialogueEnd -= OnClick;
+            Debug.LogWarning(StartDialogueNode.missionCanvasNode.EntityID);
             TaskManager.interactionOverrides[StartDialogueNode.missionCanvasNode.EntityID].Pop();
             if (index != 0)
             {
@@ -262,7 +278,20 @@ namespace NodeEditorFramework.Standard
             }
         }
 
-        public void StartTask()
+        private void SetTaskCheckpoint()
+        {
+            (Canvas.Traversal as Traverser).lastCheckpointName = taskName;
+            TaskManager.Instance.AttemptAutoSave();
+
+            if (!string.IsNullOrEmpty(entityIDforConfirmedResponse))
+            {
+                InteractAction action = new InteractAction();
+                action.action = () => OnConfirmed();
+                TaskManager.Instance.PushInteractionOverrides(entityIDforConfirmedResponse, action, Canvas.Traversal as Traverser);
+            }
+        }
+
+        public void RegisterTask()
         {
             Task task = new Task()
             {
@@ -299,24 +328,13 @@ namespace NodeEditorFramework.Standard
                     mission.tasks.Add(task);
                 }
             }
+        }
 
-            (Canvas.Traversal as Traverser).lastCheckpointName = taskName;
-            TaskManager.Instance.AttemptAutoSave();
+        public void StartTask()
+        {
+            RegisterTask();
 
-
-            if (!string.IsNullOrEmpty(entityIDforConfirmedResponse))
-            {
-                if (TaskManager.interactionOverrides.ContainsKey(entityIDforConfirmedResponse))
-                {
-                    TaskManager.interactionOverrides[entityIDforConfirmedResponse].Push(() => OnConfirmed());
-                }
-                else
-                {
-                    var stack = new Stack<UnityEngine.Events.UnityAction>();
-                    stack.Push(() => OnConfirmed());
-                    TaskManager.interactionOverrides.Add(entityIDforConfirmedResponse, stack);
-                }
-            }
+            SetTaskCheckpoint();
         }
     }
 }

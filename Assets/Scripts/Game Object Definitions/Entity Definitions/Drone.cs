@@ -22,7 +22,7 @@ public class Drone : AirCraft, IOwnable
     public void SetOwner(IOwner owner)
     {
         this.owner = owner;
-        ai.owner = owner;
+        if (ai) ai.owner = owner;
         owner.GetUnitsCommanding().Add(this);
         if (owner is AirCarrier || owner is GroundCarrier || owner is AirWeaponStation || owner is GroundWeaponStation)
         {
@@ -127,7 +127,6 @@ public class Drone : AirCraft, IOwnable
 
     public void Init()
     {
-        isDraggable = true;
         base.Start();
         ai = GetAI();
         ai.owner = owner;

@@ -5,6 +5,7 @@
 /// </summary>
 public abstract class ActiveAbility : Ability
 {
+
     /// <summary>
     /// Initialization of every active ability
     /// </summary>
@@ -35,6 +36,11 @@ public abstract class ActiveAbility : Ability
         //if (input && State == AbilityState.Active)
         //    Deactivate();
         base.SetDestroyed(input);
+    }
+
+    public override void Tick()
+    {
+        base.Tick();
     }
 
     private void OnDestroy()

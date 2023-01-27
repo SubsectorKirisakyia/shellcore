@@ -807,7 +807,7 @@ public class WCGeneratorHandler : MonoBehaviour
 
                 foreach (string file in files)
                 {
-                    if (file.Contains(".meta"))
+                    if (file.Contains(".meta") || file.Contains(".DS_Store"))
                     {
                         continue;
                     }
@@ -849,7 +849,7 @@ public class WCGeneratorHandler : MonoBehaviour
                     }
 
                     string sectorjson = System.IO.File.ReadAllText(file);
-                    SectorCreatorMouse.SectorData data = JsonUtility.FromJson<SectorCreatorMouse.SectorData>(sectorjson);
+                    Sector.SectorData data = JsonUtility.FromJson<Sector.SectorData>(sectorjson);
                     // Debug.Log("Platform JSON: " + data.platformjson);
                     // Debug.Log("Sector JSON: " + data.sectorjson);
                     Sector curSect = ScriptableObject.CreateInstance<Sector>();

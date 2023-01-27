@@ -2,7 +2,7 @@
 
 namespace NodeEditorFramework.Standard
 {
-    [Node(false, "Flow/Finish Mission")]
+    [Node(false, "Tasks/Finish Mission", typeof(QuestCanvas))]
     public class FinishMissionNode : Node
     {
         //Node things
@@ -34,11 +34,13 @@ namespace NodeEditorFramework.Standard
         public override void NodeGUI()
         {
             GUILayout.BeginHorizontal();
-            GUILayout.Label("Sound Jingle ID");
+            GUILayout.Label("Sound Jingle ID:");
+            GUILayout.EndHorizontal();
+            GUILayout.BeginHorizontal();
             jingleID = GUILayout.TextField(jingleID);
             GUILayout.EndHorizontal();
             GUILayout.BeginHorizontal();
-            GUILayout.Label("Rewards text field");
+            GUILayout.Label("Reward Text Field:");
             GUILayout.EndHorizontal();
             GUILayout.BeginHorizontal();
             rewardsText = GUILayout.TextArea(rewardsText);

@@ -123,24 +123,29 @@ namespace NodeEditorFramework.IO
 				fileSelectionMenuRect.height = 500;
 				width = fileSelectionMenuRect.width;
 			}
+			GUILayout.EndHorizontal();
 
 			// Finish operation buttons
 			GUILayout.BeginHorizontal();
 			if (GUILayout.Button("Cancel"))
+			{
+				GUILayout.EndHorizontal();
 				return false;
+			}
 			if (GUILayout.Button("Import"))
 			{
 				if (string.IsNullOrEmpty(fileSelection) || !File.Exists(Path.Combine(RuntimeIOPath, fileSelection)))
 				{
 					Debug.Log(Path.Combine(RuntimeIOPath, fileSelection));
+					GUILayout.EndHorizontal();
 					return false;
 				}
 				fileSelection = Path.GetFileName(fileSelection);
 				locationArgs = new object[] { Path.Combine(RuntimeIOPath, fileSelection) };
 
 					if (RuntimeIOPath == null || RuntimeIOPath == "")
-                    RuntimeIOPath = Path.Combine(Application.streamingAssetsPath + "CanvasPlaceholder");
-
+                    RuntimeIOPath = Path.Combine(Application.streamingAssetsPath, "CanvasPlaceholder");
+				GUILayout.EndHorizontal();
 				return true;
 			}
 			GUILayout.EndHorizontal();
@@ -197,19 +202,27 @@ namespace NodeEditorFramework.IO
 
 			// Finish operation buttons
 			GUILayout.BeginHorizontal();
-			if (GUILayout.Button("Cancel"))
+			if (GUILayout.Button("Cancel")) 
+			{
+				GUILayout.EndHorizontal();
 				return false;
+
+			}
 			if (GUILayout.Button("Export"))
 			{
 				if (string.IsNullOrEmpty(fileSelection))
+				{
+					GUILayout.EndHorizontal();
 					return false;
+				}
 				fileSelection = Path.GetFileNameWithoutExtension(fileSelection);
 
                 if (RuntimeIOPath == null || RuntimeIOPath == "")
-                    RuntimeIOPath = Path.Combine(Application.streamingAssetsPath + "CanvasPlaceholder");
+                    RuntimeIOPath = Path.Combine(Application.streamingAssetsPath, "CanvasPlaceholder");
 
                 locationArgs = new object[] { Path.Combine(RuntimeIOPath, fileSelection + ext)};
                 Debug.Log(Path.Combine(RuntimeIOPath, fileSelection + ext));
+				GUILayout.EndHorizontal();
 				return true;
 			}
 			GUILayout.EndHorizontal();

@@ -7,7 +7,7 @@ using UnityEngine.Events;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
-public class WCWorldIO : MonoBehaviour
+public class WCWorldIO : GUIWindowScripts
 {
     public WCGeneratorHandler generatorHandler;
     public ShipBuilder builder;
@@ -27,7 +27,9 @@ public class WCWorldIO : MonoBehaviour
         ReadShipJSON,
         WriteShipJSON,
         ReadWaveJSON,
-        WriteWaveJSON
+        WriteWaveJSON,
+        ReadVendingBlueprintJSON,
+        WriteVendingBlueprintJSON
     }
 
     IOMode mode = IOMode.Read;
@@ -118,6 +120,10 @@ public class WCWorldIO : MonoBehaviour
         }
     }
 
+    public override bool GetActive() {
+        return gameObject.activeSelf;
+    }
+
     public static void DeletePlaceholderDirectories()
     {
         var CanvasPlaceholder = System.IO.Path.Combine(Application.streamingAssetsPath, "CanvasPlaceholder");
@@ -187,6 +193,7 @@ public class WCWorldIO : MonoBehaviour
         {
             WorldCreatorCursor.instance.Clear();
             generatorHandler.ReadWorld(originalReadPath);
+            WorldCreatorCursor.instance.propertyDisplay.LoadFactions();
         }
         else if (mode == IOMode.Write)
         {
@@ -285,7 +292,7 @@ public class WCWorldIO : MonoBehaviour
     {
         loadingText.gameObject.SetActive(true);
         loadingText.text = GetLoadingString();
-        var skippedFiles = new List<string> { ".meta", ".worlddata", ".taskdata", ".dialoguedata", ".sectordata", "ResourceData.txt" };
+        var skippedFiles = new List<string> { ".meta", ".worlddata", ".taskdata", ".dialoguedata", ".sectordata", "ResourceData.txt" , ".DS_Store"};
         List<Sector> sectors = new List<Sector>();
         foreach (var str in System.IO.Directory.GetFiles(path))
         {
@@ -295,9 +302,7 @@ public class WCWorldIO : MonoBehaviour
             }
 
             string sectorjson = System.IO.File.ReadAllText(str);
-            SectorCreatorMouse.SectorData data = JsonUtility.FromJson<SectorCreatorMouse.SectorData>(sectorjson);
-            // Debug.Log("Platform JSON: " + data.platformjson);
-            // Debug.Log("Sector JSON: " + data.sectorjson);
+            Sector.SectorData data = JsonUtility.FromJson<Sector.SectorData>(sectorjson);
             Sector curSect = ScriptableObject.CreateInstance<Sector>();
             JsonUtility.FromJsonOverwrite(data.sectorjson, curSect);
             sectors.Add(curSect);
@@ -316,6 +321,11 @@ public class WCWorldIO : MonoBehaviour
 
     void Show(IOMode mode)
     {
+        if ((mode != IOMode.Read && mode != IOMode.Write) && 
+            !Directory.Exists(System.IO.Path.Combine(Application.streamingAssetsPath, "EntityPlaceholder")))
+        {
+            return;
+        }
         buttons.Clear();
         active = true;
         gameObject.SetActive(true);
@@ -327,6 +337,7 @@ public class WCWorldIO : MonoBehaviour
 
         readButton.gameObject.SetActive(mode == IOMode.Read || mode == IOMode.Write);
 
+        PlayerViewScript.SetCurrentWindow(this);
         switch (mode)
         {
             case IOMode.Read:
@@ -491,5 +502,14 @@ public class WCWorldIO : MonoBehaviour
         DestroyAllButtons();
         gameObject.SetActive(false);
         window.SetActive(false);
+    }
+
+    public override void CloseUI()
+    {
+        Hide();            
+        if (playSoundOnClose)
+        {
+            AudioManager.PlayClipByID("clip_back", true);
+        }
     }
 }

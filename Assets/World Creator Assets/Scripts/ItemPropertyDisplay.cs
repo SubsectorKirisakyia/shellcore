@@ -43,6 +43,13 @@ public class ItemPropertyDisplay : MonoBehaviour
         }
     }
 
+    public void LoadFactions()
+    {
+        factionIDs = new List<int>();
+        UpdateFactionIDList(factionIDs);
+        AddCustomFactionsToDropdown(factionDropdown);
+    }
+
     void Awake()
     {
         if (!rectTransform)
@@ -50,9 +57,7 @@ public class ItemPropertyDisplay : MonoBehaviour
             rectTransform = GetComponent<RectTransform>();
         }
 
-        factionIDs = new List<int>();
-        UpdateFactionIDList(factionIDs);
-        AddCustomFactionsToDropdown(factionDropdown);
+        LoadFactions();
 
         if (editingDefaults)
         {
@@ -102,6 +107,7 @@ public class ItemPropertyDisplay : MonoBehaviour
         }
 
         var pos = Camera.main.WorldToScreenPoint(currentItem.pos);
+        pos *= UIScalerScript.GetScale();
         pos += new Vector3(300, 0);
         rectTransform.anchoredPosition = pos;
     }
@@ -116,6 +122,7 @@ public class ItemPropertyDisplay : MonoBehaviour
         }
 
         var pos = Camera.main.WorldToScreenPoint(currentItem.pos);
+        pos *= UIScalerScript.GetScale();
         pos += new Vector3(300, 0);
         rectTransform.anchoredPosition = pos;
         factionDropdown.value = item.faction;

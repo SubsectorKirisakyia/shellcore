@@ -17,6 +17,17 @@ public class IonLineController : MonoBehaviour
     float startWidth = 0f;
     float poweredWidth = 0.3F;
 
+    float energyCost;
+    float damage;
+    public static float damageC = 1500;
+    public static float energyC = 150;
+
+    public float GetBeamAngle() 
+    {
+        return beamBearing;
+    }
+
+
     public void Awake()
     {
         line = gameObject.AddComponent<LineRenderer>();
@@ -38,6 +49,11 @@ public class IonLineController : MonoBehaviour
     {
         this.duration = duration;
         line.startWidth = line.endWidth = startWidth;
+
+        var pos = targetingSystem.GetTarget().position;
+        var vec = (pos - line.gameObject.transform.position).normalized;
+        var targetBearing = GetBearingFromVector(vec);
+        beamBearing = targetBearing;
     }
 
     public void Init(WeaponTargetingSystem targetingSystem, Entity core, float range, ShellPart part, int tier)
@@ -83,14 +99,63 @@ public class IonLineController : MonoBehaviour
         }
     }
 
-    float energyCost;
-    float damage;
-    public static float damageC = 1500;
-    public static float energyC = 150;
+    private float UpdateBearing()
+    {
+        var pos = targetingSystem.GetTarget().position;
+        var vec = (pos - line.gameObject.transform.position).normalized;
+        //var angle = Mathf.Atan(vec.y / vec.x);
+        var targetBearing = GetBearingFromVector(vec);
+
+
+        // vec = (GetMousePos() - transform.position).normalized;
+        var originalBearing = beamBearing;
+
+        var diff = targetBearing - originalBearing;
+
+        var c = 65 * Time.deltaTime;
+        bool goForwards = false;
+
+        if (originalBearing < 180)
+        {
+            goForwards = targetBearing - originalBearing < 180 && targetBearing - originalBearing > 0;
+        }
+        else
+        {
+            var limit = originalBearing + 180 - 360;
+            goForwards = targetBearing < 180 ? (targetBearing < limit) : (targetBearing > originalBearing);
+        }
+
+        if (Mathf.Abs(diff) <= c)
+        {
+            originalBearing = targetBearing;
+        }
+        else
+        {
+            originalBearing += goForwards ? c : -c;
+        }
+
+        beamBearing = originalBearing;
+        if (beamBearing > 360)
+        {
+            beamBearing -= 360;
+        }
+
+        if (beamBearing < 0)
+        {
+            beamBearing += 360;
+        }
+
+        return originalBearing;
+    }
 
     void Update()
     {
         line.gameObject.transform.position = gameObject.transform.position;
+        float originalBearing = 0;
+        if (initialized && targetingSystem.GetTarget())
+        {
+            originalBearing = UpdateBearing();
+        }
         if (initialized && targetingSystem.GetTarget() && !Core.IsInvisible && duration > 0)
         {
             if (Core.GetHealth()[2] < energyCost * Time.deltaTime)
@@ -100,53 +165,9 @@ public class IonLineController : MonoBehaviour
             }
 
             duration -= Time.deltaTime;
-            var pos = targetingSystem.GetTarget().position;
             line.positionCount = 2;
             line.SetPosition(0, line.gameObject.transform.position);
-            var vec = (pos - line.gameObject.transform.position).normalized;
-            //var angle = Mathf.Atan(vec.y / vec.x);
-            var targetBearing = GetBearingFromVector(vec);
 
-
-            // vec = (GetMousePos() - transform.position).normalized;
-            var originalBearing = beamBearing;
-
-            var diff = targetBearing - originalBearing;
-
-            var c = 65 * Time.deltaTime;
-            bool goForwards = false;
-
-            if (originalBearing < 180)
-            {
-                goForwards = targetBearing - originalBearing < 180 && targetBearing - originalBearing > 0;
-            }
-            else
-            {
-                var limit = originalBearing + 180 - 360;
-                goForwards = targetBearing < 180 ? (targetBearing < limit) : (targetBearing > originalBearing);
-            }
-
-            if (Mathf.Abs(diff) <= c)
-            {
-                originalBearing = targetBearing;
-            }
-            else
-            {
-                originalBearing += goForwards ? c : -c;
-            }
-
-            beamBearing = originalBearing;
-            if (beamBearing > 360)
-            {
-                beamBearing -= 360;
-            }
-
-            if (beamBearing < 0)
-            {
-                beamBearing += 360;
-            }
-
-            var newAngle = GetAngleFromBearing(originalBearing) * Mathf.Deg2Rad;
 
             // Debug.LogError(angle * Mathf.Rad2Deg + " " + GetBearingFromVector(vec) + " " + GetAngleFromBearing(GetBearingFromVector(vec)));
             line.SetPosition(1, transform.position + GetVectorByBearing(originalBearing) * range);
@@ -210,6 +231,11 @@ public class IonLineController : MonoBehaviour
                 }
             }
         }
+    }
+
+    public float GetDuration()
+    {
+        return duration;
     }
 
     float GetBearingFromVector(Vector2 vec)

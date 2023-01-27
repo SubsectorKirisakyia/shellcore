@@ -51,30 +51,24 @@ namespace NodeEditorFramework.Standard
                 DeleteConnectionPort(outputKnobs[0]);
                 output = null;
             }
-            else if ((NodeEditorGUI.state != NodeEditorGUI.NodeEditorState.Dialogue) && (output == null))
+            else if ((NodeEditorGUI.state != NodeEditorGUI.NodeEditorState.Dialogue) && (output == null) && !jumpToStart)
             {
-                output = CreateConnectionKnob(OutStyle);
+                if (outputKnobs.Count > 0) 
+		{
+		    output = outputKnobs[0];
+		}
+		else
+	    	{
+		    output = CreateConnectionKnob(OutStyle);
+		}
             }
 
             GUILayout.BeginHorizontal();
             input.DisplayLayout();
-            if (!jumpToStart && (NodeEditorGUI.state != NodeEditorGUI.NodeEditorState.Dialogue))
-            {
-                if (output == null)
-                {
-                    if (outputKnobs.Count == 0)
-                    {
-                        output = CreateConnectionKnob(OutStyle);
-                    }
-                    else
-                    {
-                        output = outputKnobs[0];
-                    }
-                }
-
-                output.DisplayLayout();
-            }
-
+	    if (output)
+	    {
+		output.DisplayLayout();
+	    }
             GUILayout.EndHorizontal();
             jumpToStart = RTEditorGUI.Toggle(jumpToStart, "Jump to start");
             if (jumpToStart && outputKnobs.Count > 0)
@@ -85,11 +79,16 @@ namespace NodeEditorFramework.Standard
 
             GUILayout.BeginHorizontal();
             openBuilder = RTEditorGUI.Toggle(openBuilder, "Open Yard");
+            if (openBuilder == true)
+            {
+                openTrader = false;
+            }
             GUILayout.EndHorizontal();
             if (openTrader = RTEditorGUI.Toggle(openTrader, "Open Trader"))
             {
-                GUILayout.BeginHorizontal();
+                openBuilder = false;
                 GUILayout.Label("Trader Inventory JSON");
+                GUILayout.BeginHorizontal();
                 traderJSON = GUILayout.TextArea(traderJSON);
                 GUILayout.EndHorizontal();
             }
@@ -106,8 +105,6 @@ namespace NodeEditorFramework.Standard
             {
                 handler = DialogueSystem.Instance;
             }
-
-            // Debug.Log(handler as DialogueSystem + "sdjhgndfgikuhtdukhntdouhntdh " + StartDialogueNode.dialogueStartNode.EntityID);
 
             if (handler as TaskManager)
             {

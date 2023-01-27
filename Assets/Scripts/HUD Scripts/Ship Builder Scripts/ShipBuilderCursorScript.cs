@@ -292,6 +292,7 @@ public class ShipBuilderCursorScript : MonoBehaviour, IShipStatsDatabase
 
     public void RotateLastPart()
     {
+        var previousRotation = lastPart.info.rotation;
         var x = Input.mousePosition - lastPart.transform.position;
         var y = new Vector3(0, 0, (Mathf.Rad2Deg * Mathf.Atan(x.y / x.x) - (x.x >= 0 ? 90 : -90)));
         if (!float.IsNaN(y.z))
@@ -306,12 +307,18 @@ public class ShipBuilderCursorScript : MonoBehaviour, IShipStatsDatabase
 
         if (symmetryLastPart && symmetryMode == SymmetryMode.X)
         {
+            symmetryLastPart.info.mirrored = !lastPart.info.mirrored;
             symmetryLastPart.info.rotation = -lastPart.info.rotation;
         }
 
         if (symmetryLastPart && symmetryMode == SymmetryMode.Y)
         {
             symmetryLastPart.info.rotation = -lastPart.info.rotation + 180;
+        }
+
+        if (previousRotation != lastPart.info.rotation)
+        {
+            builder.UpdateChain();
         }
 
         return;

@@ -12,6 +12,11 @@ public class WaveBuilder : GUIWindowScripts
         ClearWaves();
     }
 
+    void OnDisable()
+    {
+        ClearWaves();
+    }
+
     void ClearWaves()
     {
         for (int i = 0; i < contents.childCount; i++)
@@ -51,7 +56,6 @@ public class WaveBuilder : GUIWindowScripts
             set.waves[i] = waveHandlers[i].Parse();
         }
 
-        CopyToClipboard(JsonUtility.ToJson(set));
         System.IO.File.WriteAllText(path, JsonUtility.ToJson(set));
     }
 

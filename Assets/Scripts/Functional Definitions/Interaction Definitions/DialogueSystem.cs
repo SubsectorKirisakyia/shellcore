@@ -33,7 +33,6 @@ public class DialogueSystem : MonoBehaviour, IDialogueOverrideHandler
     Text textRenderer;
     GameObject[] buttons;
     public ShipBuilder builder;
-    public DroneWorkshop workshop;
     public VendorUI vendorUI;
     int characterCount = 0;
     float nextCharacterTime;
@@ -67,11 +66,24 @@ public class DialogueSystem : MonoBehaviour, IDialogueOverrideHandler
     }
 
     public static List<string> dialogueCanvasPaths = new List<string>();
-    public static List<string> speakerIDList = new List<string>();
-    public static Dictionary<string, Stack<UnityAction>> interactionOverrides = new Dictionary<string, Stack<UnityAction>>();
+    public static Dictionary<string, Stack<InteractAction>> interactionOverrides = new Dictionary<string, Stack<InteractAction>>();
     private static List<DialogueTraverser> traversers;
     public static string speakerID;
     private static bool initialized = false;
+
+    public void PushInteractionOverrides(string entityID, InteractAction action, Traverser traverser) 
+    {
+        if (GetInteractionOverrides().ContainsKey(entityID))
+        {
+            GetInteractionOverrides()[entityID].Push(action);
+        }
+        else
+        {
+            var stack = new Stack<InteractAction>();
+            stack.Push(action);
+            GetInteractionOverrides().Add(entityID, stack);
+        }
+    }
 
     // Bugfixes dialogue canvas paths persisting post world reload in the WC
     public static void ClearStatics()
@@ -79,11 +91,6 @@ public class DialogueSystem : MonoBehaviour, IDialogueOverrideHandler
         if (dialogueCanvasPaths != null)
         {
             dialogueCanvasPaths.Clear();
-        }
-
-        if (speakerIDList != null)
-        {
-            speakerIDList.Clear();
         }
 
         if (interactionOverrides != null)
@@ -106,7 +113,7 @@ public class DialogueSystem : MonoBehaviour, IDialogueOverrideHandler
 
     public static void InitCanvases()
     {
-        interactionOverrides = new Dictionary<string, Stack<UnityAction>>();
+        interactionOverrides = new Dictionary<string, Stack<InteractAction>>();
         traversers = new List<DialogueTraverser>();
         NodeCanvasManager.FetchCanvasTypes();
         NodeTypes.FetchNodeTypes();
@@ -138,8 +145,7 @@ public class DialogueSystem : MonoBehaviour, IDialogueOverrideHandler
 
         var path = offloadingDialogues[id];
         offloadingDialogues.Remove(id);
-        var XMLImport = new XMLImportExport();
-        var canvas = XMLImport.Import(path) as DialogueCanvas;
+        var canvas = TaskManager.GetCanvas(path) as DialogueCanvas;
         if (canvas != null)
         {
             var traverser = new DialogueTraverser(canvas);
@@ -176,7 +182,8 @@ public class DialogueSystem : MonoBehaviour, IDialogueOverrideHandler
     private void Update()
     {
         if (window && speakerPos != null && player &&
-            ((player.transform.position - ((Vector3)speakerPos)).sqrMagnitude > 100 || player.GetIsDead()) && !isInCutscene)
+            ((player.transform.position - ((Vector3)speakerPos)).sqrMagnitude > 100 || player.GetIsDead() 
+            || (speaker && speaker.GetIsDead())) && !isInCutscene)
         {
             endDialogue();
         }
@@ -199,7 +206,8 @@ public class DialogueSystem : MonoBehaviour, IDialogueOverrideHandler
         }
     }
 
-    public static void StartDialogue(Dialogue dialogue, Entity speaker = null)
+    private Entity speaker;
+    public static void StartDialogue(Dialogue dialogue, IInteractable speaker = null)
     {
         Instance.startDialogue(dialogue, speaker);
     }
@@ -223,6 +231,8 @@ public class DialogueSystem : MonoBehaviour, IDialogueOverrideHandler
         {
             Destroy(window.transform.parent.gameObject);
         }
+
+        this.speaker = speaker;
 
         //create window
         speakerPos = null;
@@ -313,7 +323,7 @@ public class DialogueSystem : MonoBehaviour, IDialogueOverrideHandler
         }
 
         buttons = new GameObject[1];
-        buttons[0] = CreateButton("Ok", () => { endDialogue(); }, 24);
+        buttons[0] = CreateButton("Ok.", () => { endDialogue(); }, 24);
     }
 
     public static void ShowBattleResults(bool victory)
@@ -367,6 +377,7 @@ public class DialogueSystem : MonoBehaviour, IDialogueOverrideHandler
             rt.pivot = new Vector2(0f, 0.5f);
             rt.offsetMin = new Vector2(120f + 80f * i, 10f);
             rt.offsetMax = new Vector2(128f + 80f * (i + 1), -10f);
+            rt.localScale = Vector3.one;
 
             text.text = stats[i];
         }
@@ -581,19 +592,20 @@ public class DialogueSystem : MonoBehaviour, IDialogueOverrideHandler
         }
     }
 
-    private void startDialogue(Dialogue dialogue, Entity speaker)
+    private void startDialogue(Dialogue dialogue, IInteractable speaker)
     {
         if (window)
         {
             endDialogue();
         }
-
-        speakerPos = speaker.transform.position;
+        if (speaker != null)
+            speakerPos = speaker.GetTransform().position;
         //create window
         window = Instantiate(dialogueBoxPrefab).GetComponentInChildren<GUIWindowScripts>();
         window.Activate();
 
-        DialogueViewTransitionIn(speaker);
+        if (speaker as Entity)
+            DialogueViewTransitionIn(speaker as Entity);
 
         background = window.transform.Find("Background").GetComponent<RectTransform>();
         background.transform.Find("Exit").GetComponent<Button>().onClick.AddListener(() => { endDialogue(); });
@@ -604,7 +616,7 @@ public class DialogueSystem : MonoBehaviour, IDialogueOverrideHandler
         next(dialogue, 0, speaker);
     }
 
-    public static void Next(Dialogue dialogue, int ID, Entity speaker)
+    public static void Next(Dialogue dialogue, int ID, IInteractable speaker)
     {
         Instance.next(dialogue, ID, speaker);
     }
@@ -612,7 +624,7 @@ public class DialogueSystem : MonoBehaviour, IDialogueOverrideHandler
     public void OpenBuilder(Vector3 speakerPos)
     {
         builder.yardPosition = speakerPos;
-        builder.Initialize(BuilderMode.Yard, null);
+        builder.Initialize(BuilderMode.Yard);
     }
 
     public void OpenTrader(Vector3 speakerPos, List<EntityBlueprint.PartInfo> traderInventory)
@@ -621,12 +633,13 @@ public class DialogueSystem : MonoBehaviour, IDialogueOverrideHandler
         builder.Initialize(BuilderMode.Trader, traderInventory);
     }
 
-    public void OpenWorkshop()
+    public void OpenWorkshop(Vector3 speakerPos)
     {
-        Debug.LogWarning("Nice try!");
+        builder.yardPosition = speakerPos;
+        builder.Initialize(BuilderMode.Workshop);
     }
 
-    public void next(Dialogue dialogue, int ID, Entity speaker)
+    public void next(Dialogue dialogue, int ID, IInteractable speaker)
     {
         if (dialogue.nodes.Count == 0)
         {
@@ -670,7 +683,7 @@ public class DialogueSystem : MonoBehaviour, IDialogueOverrideHandler
                 break;
             case Dialogue.DialogueAction.Outpost:
                 endDialogue(0, false);
-                if (speaker.faction != player.faction)
+                if ((speaker as IVendor).NeedsSameFaction() && (speaker as IVendor).GetFaction() != player.faction)
                 {
                     return;
                 }
@@ -695,8 +708,7 @@ public class DialogueSystem : MonoBehaviour, IDialogueOverrideHandler
                 endDialogue(0, true);
                 return;
             case Dialogue.DialogueAction.Workshop:
-                workshop.yardPosition = (Vector3)speakerPos;
-                workshop.InitializeSelectionPhase();
+                OpenWorkshop((Vector3)speakerPos);
                 endDialogue(0, false);
                 return;
             case Dialogue.DialogueAction.Upgrader:
@@ -707,9 +719,13 @@ public class DialogueSystem : MonoBehaviour, IDialogueOverrideHandler
                 break;
         }
 
-        // radio image 
-        window.GetComponentInChildren<SelectionDisplayHandler>().AssignDisplay(speaker.blueprint, null, speaker.faction);
-        window.transform.Find("Name").GetComponent<Text>().text = speaker.blueprint.entityName;
+        if (speaker as Entity)
+        {
+            var ent = speaker as Entity;
+            // radio image 
+            window.GetComponentInChildren<SelectionDisplayHandler>().AssignDisplay(ent.blueprint, null, ent.faction);
+            window.transform.Find("Name").GetComponent<Text>().text = ent.blueprint.entityName;
+        }
 
         // change text
         text = current.text.Replace("<br>", "\n");
@@ -763,6 +779,14 @@ public class DialogueSystem : MonoBehaviour, IDialogueOverrideHandler
 
     private void endDialogue(int answer = 0, bool soundOnClose = true)
     {
+        speaker = null;
+        if (window)
+        {
+            window.playSoundOnClose = soundOnClose;
+            Destroy(window.transform.root.gameObject);
+            window.CloseUI();
+        }
+
         // strange behavior here when tasks are checkpointed, look into this when bugs arise
         if (answer == 0)
         {
@@ -770,15 +794,7 @@ public class DialogueSystem : MonoBehaviour, IDialogueOverrideHandler
             {
                 OnDialogueCancel.Invoke();
             }
-
             DialogueViewTransitionOut();
-        }
-
-        if (window)
-        {
-            window.playSoundOnClose = soundOnClose;
-            window.CloseUI();
-            Destroy(window.transform.root.gameObject);
         }
 
         if (OnDialogueEnd != null)
@@ -940,12 +956,7 @@ public class DialogueSystem : MonoBehaviour, IDialogueOverrideHandler
         }
     }
 
-    public List<string> GetSpeakerIDList()
-    {
-        return speakerIDList;
-    }
-
-    public Dictionary<string, Stack<UnityAction>> GetInteractionOverrides()
+    public Dictionary<string, Stack<InteractAction>> GetInteractionOverrides()
     {
         return interactionOverrides;
     }

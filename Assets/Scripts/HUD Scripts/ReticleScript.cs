@@ -132,7 +132,7 @@ public class ReticleScript : MonoBehaviour
             // if it is not null, dead or the player itself and is interactible
             {
                 // TODO: synchronize this with the proximity script
-                if (!craft.GetIsInteracting() && targSys.GetTarget() == curTarg.GetTransform()
+                if (curTarg as Entity && !craft.GetIsInteracting() && targSys.GetTarget() == curTarg.GetTransform()
                                               && (curTarg.GetTransform().position - craft.transform.position).sqrMagnitude < 100
                                               && (curTarg as Entity).GetInteractible()) //Interact with entity
                 {
@@ -159,9 +159,11 @@ public class ReticleScript : MonoBehaviour
         }
     }
 
+    private float expandRate = 10F;
     /// <summary>
     /// Used to update the reticle representation
     /// </summary>
+    private Transform lastMainTarget;
     private void SetTransform()
     {
         if (targSys == null)
@@ -170,10 +172,18 @@ public class ReticleScript : MonoBehaviour
         }
 
         Transform target = targSys.GetTarget(); // get the target
+        if (target != lastMainTarget) {
+            reticleImage.transform.localScale = new Vector3(0, 0, 1);
+            lastMainTarget = target;
+        }
         if (target != null)
         {
             reticleImage.rectTransform.anchoredPosition = Camera.main.WorldToScreenPoint(target.position);
-            //transform.position = target.position; // update reticle position
+            reticleImage.rectTransform.anchoredPosition *= UIScalerScript.GetScale();
+            var x = reticleImage.transform.localScale;
+            x.x = Mathf.Min(x.x + expandRate * Time.deltaTime, 1);
+            x.y = Mathf.Min(x.y + expandRate * Time.deltaTime, 1);
+            reticleImage.transform.localScale = x;
             reticleImage.enabled = true;
         }
         else
@@ -193,6 +203,14 @@ public class ReticleScript : MonoBehaviour
         {
             var oldCount = secondariesByObject.Count;
             SetSecondaryReticleTransform(secondariesByObject[index].Item1, secondariesByObject[index].Item2, index + 1);
+            if (index < secondariesByObject.Count)
+            {
+                var x = secondariesByObject[index].Item2.localScale;
+                x.x = Mathf.Min(x.x + expandRate * Time.deltaTime, 1);
+                x.y = Mathf.Min(x.y + expandRate * Time.deltaTime, 1);
+                secondariesByObject[index].Item2.localScale = x;
+            }
+
             if (oldCount == secondariesByObject.Count)
             {
                 index++;
@@ -267,7 +285,7 @@ public class ReticleScript : MonoBehaviour
         if (ent != null && !ent.GetIsDead() && !ent.GetInvisible())
         {
             reticle.GetComponent<RectTransform>().anchoredPosition = Camera.main.WorldToScreenPoint(ent.transform.position); // update reticle position
-
+            reticle.GetComponent<RectTransform>().anchoredPosition *= UIScalerScript.GetScale();
             reticle.Find("Number Marker").GetComponent<Text>().enabled = true;
             reticle.Find("Number Marker").GetComponent<Text>().text = count + "";
             reticle.Find("Number Marker").GetComponent<Text>().color = new Color32(0, 150, 250, 255);
@@ -385,6 +403,7 @@ public class ReticleScript : MonoBehaviour
         if (success)
         {
             var reticle = Instantiate(secondaryReticlePrefab, ent.transform.position, Quaternion.identity, transform.parent);
+            reticle.transform.localScale = new Vector3(0, 0, 1);
             AdjustReticleBounds(reticle.GetComponent<Image>(), ent.transform);
             secondariesByObject.Add((ent, reticle.transform));
             //SetSecondaryReticleTransform(ent, reticle.transform, secondariesByObject.Count);

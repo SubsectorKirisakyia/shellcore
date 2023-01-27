@@ -18,6 +18,11 @@ public class Ion : WeaponAbility
         base.Awake();
     }
 
+    public float GetBeamAngle() 
+    {
+        return lineController.GetBeamAngle();
+    }
+
     protected override void Start()
     {
         base.Start();
@@ -40,6 +45,10 @@ public class Ion : WeaponAbility
         {
             Destroy(lineController.gameObject);
         }
+        if (source)
+        {
+            Destroy(source);
+        }
     }
 
     void LateUpdate()
@@ -51,9 +60,10 @@ public class Ion : WeaponAbility
 
     void Update()
     {
-        /*
-        
-        */
+        if (lineController.GetDuration() <= 0 && source)
+        {
+            Destroy(source);
+        }
     }
 
     Vector3 GetMousePos()
@@ -63,6 +73,7 @@ public class Ion : WeaponAbility
         return vec;
     }
 
+    GameObject source;
     protected override bool Execute(Vector3 victimPos)
     {
         /*
@@ -78,7 +89,7 @@ public class Ion : WeaponAbility
         {
             var gObj = new GameObject("Sound");
             gObj.transform.SetParent(transform);
-            AudioManager.PlayClipByID("clip_ion", transform.position, gObj);
+            source = AudioManager.PlayClipByID("clip_ion", transform.position);
             lineController.StartFiring(5);
             return true;
         }

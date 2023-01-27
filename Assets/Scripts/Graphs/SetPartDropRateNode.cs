@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace NodeEditorFramework.Standard
 {
-    [Node(false, "Flow/Set Part Drop Rate")]
+    [Node(false, "Actions/Set Part Drop Rate")]
     public class SetPartDropRateNode : Node
     {
         public override string GetName
@@ -47,18 +47,18 @@ namespace NodeEditorFramework.Standard
             if (!(restoreOld = GUILayout.Toggle(restoreOld, "Restore old drop rate")))
             {
                 GUILayout.EndHorizontal();
+                GUILayout.Label("Drop Rate:");
                 GUILayout.BeginHorizontal();
-                GUILayout.Label("Drop Rate");
-                dropRate = RTEditorGUI.FloatField(dropRate, GUILayout.MinWidth(400));
-                if (dropRate < 0)
+                dropRate = RTEditorGUI.FloatField(dropRate, GUILayout.MinWidth(50));
+                if (dropRate < 0 || dropRate > 1)
                 {
-                    dropRate = RTEditorGUI.FloatField(0, GUILayout.MinWidth(400));
-                    Debug.LogWarning("Can't register negative numbers!");
+                    dropRate = RTEditorGUI.FloatField(0, GUILayout.MinWidth(50));
+                    Debug.LogWarning("Can't register this number!");
                 }
                 GUILayout.EndHorizontal();
+                GUILayout.Label("Sector Name:");
                 GUILayout.BeginHorizontal();
-                GUILayout.Label("Sector Name");
-                sectorName = RTEditorGUI.TextField(sectorName, GUILayout.MinWidth(400));
+                sectorName = RTEditorGUI.TextField(sectorName, GUILayout.MinWidth(50));
             }
 
             GUILayout.EndHorizontal();
@@ -92,7 +92,7 @@ namespace NodeEditorFramework.Standard
         {
             if (sectorName != this.sectorName)
             {
-                Debug.Log("Left part drop rate sector");
+                if (Entity.partDropRate != Entity.DefaultPartRate) Debug.Log("Left part drop rate sector");
                 Entity.partDropRate = Entity.DefaultPartRate;
             }
             else

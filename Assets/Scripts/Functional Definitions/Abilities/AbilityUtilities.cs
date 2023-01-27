@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 
 public enum AbilityID
 {
@@ -43,7 +43,12 @@ public enum AbilityID
     Flak,
     Rocket,
     YardWarp,
-    Unload
+    Unload,
+    HealAura,
+    SpeedAura,
+    EnergyAura,
+    ChainBeam,
+    SpeederMissile
 }
 
 public static class AbilityUtilities
@@ -99,6 +104,8 @@ public static class AbilityUtilities
             case 37:
             case 38:
             case 39:
+            case 45:
+            case 46:
                 return AbilityHandler.AbilityTypes.Weapons;
             case 1:
             case 2:
@@ -127,6 +134,9 @@ public static class AbilityUtilities
             case 22:
             case 23:
             case 34:
+            case 42:
+            case 43:
+            case 44:
                 return AbilityHandler.AbilityTypes.Passive;
             case 0:
             default:
@@ -141,7 +151,7 @@ public static class AbilityUtilities
             case 0:
                 return "Does nothing.";
             case 1:
-                return $"+{SpeedThrust.boost * tier} speed for 10 seconds.";
+                return $"+{SpeedThrust.boost * tier} speed for {SpeedThrust.duration} seconds.";
             case 2:
                 return $"Instantly heal {HealthHeal.heals[0] * tier} shell.";
             case 3:
@@ -163,7 +173,6 @@ public static class AbilityUtilities
                 {
                     return "Spawns a drone.";
                 }
-
                 DroneSpawnData data = DroneUtilities.GetDroneSpawnDataByShorthand(secondaryData);
                 return DroneUtilities.GetDescriptionByType(data.type);
             case 11:
@@ -185,7 +194,7 @@ public static class AbilityUtilities
             case 20:
                 return $"Passively increases maximum energy by {ShellMax.maxes[2] * tier} points.";
             case 21:
-                return $"Passively increases the maximum allowed number of controlled units by {Command.commandUnitIncrease}.";
+                return $"Passively increases the maximum allowed number of controlled units by {Command.commandUnitIncrease * Mathf.Max(1, tier)}.";
             case 22:
                 return $"Passively increases core regen by {ShellRegen.regens[1] * tier} points.";
             case 23:
@@ -203,19 +212,19 @@ public static class AbilityUtilities
             case 29:
                 return "Absorb damage and turn it into energy.";
             case 30:
-                return $"Temporarily increase shell regen by { ActiveRegen.healAmounts[0] } per second.";
+                return $"Temporarily increase shell regen by {ActiveRegen.healAmounts[0] * tier} per second.";
             case 31:
-                return "Temporarily increase core... wait, this isn't supposed to exist!";
+                return $"Temporarily increase core regen by {ActiveRegen.healAmounts[1] * tier} per second.";
             case 32:
-                return $"Temporarily increase energy regen by { ActiveRegen.healAmounts[2] } per second.";
+                return $"Temporarily increase energy regen by {ActiveRegen.healAmounts[2] * tier} per second.";
             case 33:
                 return "Disrupt enemy ability cooldowns.";
             case 34:
-                return $"Gives allies additional {Control.baseControlFractionBoost * 100}% shell and {Control.damageAddition} weapon damage.";
+                return $"Gives allies additional {Control.baseControlFractionBoost * 100 * tier}% shell and {Control.damageAddition * tier} weapon damage.";
             case 35:
                 return "Temporarily pulls you to your tractor target and allows you to tractor most entities.";
             case 36:
-                return $"Stationary projectile that deals {Bomb.bombDamage} damage. \nProjectile lasts {45F * tier} seconds.";
+                return $"Stationary projectile that deals {Bomb.bombDamage * tier} damage. \nProjectile lasts {45F * tier} seconds.";
             case 37:
                 return $"Slow moving beam that deals {IonLineController.damageC * tier} damage per second for 5 seconds. "
                        + $"\nBeam costs {IonLineController.energyC * tier} energy per second.";
@@ -227,6 +236,10 @@ public static class AbilityUtilities
                 return "Warps your currently held part directly into your inventory.";
             case 41:
                 return $"Temporarily reduces Global Cooldown by {Mathf.Min(tier, 1)}/{Mathf.Min(tier, 1) + 1}.";
+            case 45:
+                return $"Instant attack that deals {Beam.beamDamage * tier} damage to multiple targets.";
+            case 46:
+                return $"Slow homing projectile that deals {Missile.missileDamage * tier} damage plus more if the target was moving.";
             default:
                 return "Description unset";
         }
@@ -257,8 +270,12 @@ public static class AbilityUtilities
             case 22:
             case 23:
             case 34:
+            case 42:
+            case 43:
+            case 44:
                 return null;
             case 4:
+            case 45:
                 if (data == "beamgroundshooter_sprite")
                 {
                     return "beamgroundshooter_sprite";
@@ -277,6 +294,7 @@ public static class AbilityUtilities
             case 6:
                 return "cannonshooter_sprite";
             case 7:
+            case 46:
                 if (data == "missile_station_shooter")
                 {
                     return "missile_station_shooter";
@@ -434,6 +452,16 @@ public static class AbilityUtilities
                 return "Yard Warp";
             case 41:
                 return "Unload";
+            case 42:
+                return "Heal Aura";
+            case 43:
+                return "Speed Aura";
+            case 44:
+                return "Energy Aura";
+            case 45:
+                return "Chain Beam";
+            case 46:
+                return "Speeder Missile";
             default:
                 return "Name unset";
         }
@@ -610,6 +638,24 @@ public static class AbilityUtilities
                 break;
             case 41:
                 ability = obj.AddComponent<Unload>();
+                break;
+            case 42:
+                ability = obj.AddComponent<TowerAura>();
+                (ability as TowerAura).type = TowerAura.AuraType.Heal;
+                break;
+            case 43:
+                ability = obj.AddComponent<TowerAura>();
+                (ability as TowerAura).type = TowerAura.AuraType.Speed;
+                break;
+            case 44:
+                ability = obj.AddComponent<TowerAura>();
+                (ability as TowerAura).type = TowerAura.AuraType.Energy;
+                break;
+            case 45:
+                ability = obj.AddComponent<ChainBeam>();
+                break;
+            case 46:
+                ability = obj.AddComponent<SpeederMissile>();
                 break;
         }
 

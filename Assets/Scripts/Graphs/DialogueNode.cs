@@ -63,12 +63,36 @@ namespace NodeEditorFramework.Standard
                 float r, g, b;
                 GUILayout.BeginHorizontal();
                 r = RTEditorGUI.FloatField(textColor.r);
+                if (textColor.r < 0 || textColor.r > 1)
+                {
+                    r = RTEditorGUI.FloatField(textColor.r = 1);
+                    Debug.LogWarning("Can't register this numbers!");
+                }
                 g = RTEditorGUI.FloatField(textColor.g);
+                if (textColor.g < 0 || textColor.g > 1)
+                {
+                    g = RTEditorGUI.FloatField(textColor.g = 1);
+                    Debug.LogWarning("Can't register this numbers!");
+                }
                 b = RTEditorGUI.FloatField(textColor.b);
+                if (textColor.b < 0 || textColor.b > 1)
+                {
+                    b = RTEditorGUI.FloatField(textColor.b = 1);
+                    Debug.LogWarning("Can't register this numbers!");
+                }
                 GUILayout.EndHorizontal();
                 textColor = new Color(r, g, b);
             }
 
+            if (customDialogueSpeed = GUILayout.Toggle(customDialogueSpeed, "Use custom typing speed", GUILayout.MinWidth(40f)))
+            {
+                floatSpeed = RTEditorGUI.FloatField("Typing speed (seconds)", floatSpeed);
+                if (speed != -2)
+                {
+                    floatSpeed = (float)speed;
+                    speed = -2;
+                }
+            }
 
             GUILayout.Label("Answers:");
             for (int i = 0; i < answers.Count; i++)
@@ -103,17 +127,6 @@ namespace NodeEditorFramework.Standard
             }
 
             GUILayout.EndHorizontal();
-            if (customDialogueSpeed = GUILayout.Toggle(customDialogueSpeed, "Use custom typing speed", GUILayout.MinWidth(40f)))
-            {
-                GUILayout.Label("");
-                floatSpeed = RTEditorGUI.FloatField("Typing speed (seconds)", floatSpeed);
-                if (speed != -2)
-                {
-                    floatSpeed = (float)speed;
-                    speed = -2;
-                }
-            }
-
             cancel.DisplayLayout();
         }
 
@@ -175,8 +188,7 @@ namespace NodeEditorFramework.Standard
                         StartDialogueNode.dialogueCanvasNode = null;
                     }
                 }
-
-                TaskManager.Instance.setNode(cancel.connection(0));
+                TaskManager.Instance.setNode(cancel);
             }
         }
 

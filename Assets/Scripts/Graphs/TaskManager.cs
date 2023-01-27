@@ -7,17 +7,25 @@ using UnityEngine.Events;
 
 public interface IDialogueOverrideHandler
 {
-    List<string> GetSpeakerIDList();
-    Dictionary<string, Stack<UnityAction>> GetInteractionOverrides();
+    Dictionary<string, Stack<InteractAction>> GetInteractionOverrides();
+    void PushInteractionOverrides(string entityID, InteractAction action, Traverser traverser);
     void SetNode(ConnectionPort node);
     void SetNode(Node node);
     void SetSpeakerID(string ID);
 }
 
+public class InteractAction 
+{
+    public int taskHash;
+    public string taskID;
+    public UnityAction action;
+    public Traverser traverser;
+}
+
 public class TaskManager : MonoBehaviour, IDialogueOverrideHandler
 {
     public static TaskManager Instance = null;
-    public static Dictionary<string, Stack<UnityAction>> interactionOverrides = new Dictionary<string, Stack<UnityAction>>();
+    public static Dictionary<string, Stack<InteractAction>> interactionOverrides = new Dictionary<string, Stack<InteractAction>>();
 
     public List<string> questCanvasPaths;
     public SaveHandler saveHandler;
@@ -53,9 +61,25 @@ public class TaskManager : MonoBehaviour, IDialogueOverrideHandler
 
     // Move to Dialogue System?
     public static string speakerID = null;
-    public static List<string> speakerIDList = new List<string>();
     public Dictionary<string, string> offloadingMissions = new Dictionary<string, string>();
     public Dictionary<string, List<string>> offloadingSectors = new Dictionary<string, List<string>>();
+
+    public void PushInteractionOverrides(string entityID, InteractAction action, Traverser traverser) 
+    {
+        MissionTraverser missionTraverser = traverser as MissionTraverser;
+        action.taskHash = missionTraverser.taskHash;
+        action.traverser = traverser;
+        if (GetInteractionOverrides().ContainsKey(entityID))
+        {
+            GetInteractionOverrides()[entityID].Push(action);
+        }
+        else
+        {
+            var stack = new Stack<InteractAction>();
+            stack.Push(action);
+            GetInteractionOverrides().Add(entityID, stack);
+        }
+    }
 
     public static Entity GetSpeaker()
     {
@@ -76,8 +100,7 @@ public class TaskManager : MonoBehaviour, IDialogueOverrideHandler
         Instance = this;
         objectiveLocations = new Dictionary<string, List<ObjectiveLocation>>();
         speakerID = null;
-        speakerIDList = new List<string>();
-        interactionOverrides = new Dictionary<string, Stack<UnityAction>>();
+        interactionOverrides = new Dictionary<string, Stack<InteractAction>>();
 
         // When adding new conditions with delegates, you MUST clear them out here
         MissionCondition.OnMissionStatusChange = null;
@@ -249,9 +272,6 @@ public class TaskManager : MonoBehaviour, IDialogueOverrideHandler
             Instance.ClearCanvases(true);
         }
 
-
-        var XMLImport = new XMLImportExport();
-
         for (int i = 0; i < questCanvasPaths.Count; i++)
         {
             string finalPath = System.IO.Path.Combine(Application.streamingAssetsPath, questCanvasPaths[i]);
@@ -278,7 +298,7 @@ public class TaskManager : MonoBehaviour, IDialogueOverrideHandler
 
                 }
 
-                var canvas = XMLImport.Import(finalPath) as QuestCanvas;
+                var canvas = GetCanvas(finalPath) as QuestCanvas;
 
                 if (canvas != null)
                 {
@@ -298,6 +318,17 @@ public class TaskManager : MonoBehaviour, IDialogueOverrideHandler
         initialized = true;
     }
 
+    public static NodeCanvas GetCanvas(string path)
+    {
+        var XMLImport = new XMLImportExport();
+        // Windows sucks man. But this should hopefully allow longer paths to work
+        if (Application.platform == RuntimePlatform.WindowsPlayer)
+        {
+            path = System.IO.Path.Join("\\\\?\\", path);
+        }
+        return XMLImport.Import(path);
+    }
+
     public void startNewQuest(string missionName)
     {
         if (!offloadingMissions.ContainsKey(missionName)) return;
@@ -309,8 +340,7 @@ public class TaskManager : MonoBehaviour, IDialogueOverrideHandler
 
         var path = offloadingMissions[missionName];
         offloadingMissions.Remove(missionName);
-        var XMLImport = new XMLImportExport();
-        var canvas = XMLImport.Import(path) as QuestCanvas;
+        var canvas = GetCanvas(path) as QuestCanvas;
 
         if (canvas != null)
         {
@@ -335,10 +365,9 @@ public class TaskManager : MonoBehaviour, IDialogueOverrideHandler
         if (!offloadingSectors.ContainsKey(sectorName)) return;
         var pathList = offloadingSectors[sectorName];
         offloadingSectors.Remove(sectorName);
-        var XMLImport = new XMLImportExport();
         foreach (var path in pathList)
         {
-            var canvas = XMLImport.Import(path) as SectorCanvas;
+            var canvas = GetCanvas(path) as SectorCanvas;
             if (canvas != null)
             {
                 var traverser = new SectorTraverser(canvas);
@@ -373,14 +402,6 @@ public class TaskManager : MonoBehaviour, IDialogueOverrideHandler
             if (traversers.Exists((t) => t.nodeCanvas.missionName == mission.name))
             {
                 var traverser = traversers.Find((t) => t.nodeCanvas.missionName == mission.name);
-                if (traverser.findRoot().overrideCheckpoint)
-                {
-                    traverser.activateCheckpoint(traverser.findRoot().overrideCheckpointName);
-                }
-                else
-                {
-                    traverser.activateCheckpoint(mission.checkpoint);
-                }
 
                 var tasks = mission.tasks.ToArray();
                 if (mission.status != Mission.MissionStatus.Complete && mission.tasks.Count > 0)
@@ -392,6 +413,15 @@ public class TaskManager : MonoBehaviour, IDialogueOverrideHandler
                         traverser.ActivateTask(start.taskID);
                     }
                 }
+
+                if (traverser.findRoot().overrideCheckpoint)
+                {
+                    traverser.activateCheckpoint(traverser.findRoot().overrideCheckpointName);
+                }
+                else
+                {
+                    traverser.activateCheckpoint(mission.checkpoint);
+                }
             }
         }
 
@@ -401,8 +431,11 @@ public class TaskManager : MonoBehaviour, IDialogueOverrideHandler
         }
     }
 
-    public void setNode(ConnectionPort connection)
+    public void 
+    setNode(ConnectionPort connection)
     {
+
+        
         // Get canvas
         if (connection.connected())
         {
@@ -472,12 +505,8 @@ public class TaskManager : MonoBehaviour, IDialogueOverrideHandler
         traversers.Remove(traverser);
     }
 
-    public List<string> GetSpeakerIDList()
-    {
-        return speakerIDList;
-    }
 
-    public Dictionary<string, Stack<UnityAction>> GetInteractionOverrides()
+    public Dictionary<string, Stack<InteractAction>> GetInteractionOverrides()
     {
         return interactionOverrides;
     }

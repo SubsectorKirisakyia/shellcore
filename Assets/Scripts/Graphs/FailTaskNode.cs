@@ -2,7 +2,7 @@
 
 namespace NodeEditorFramework.Standard
 {
-    [Node(false, "Tasks/Fail Task Node")]
+    [Node(false, "Tasks/Fail Task Node", typeof(QuestCanvas))]
     public class FailTaskNode : Node
     {
         //Node things
@@ -45,27 +45,24 @@ namespace NodeEditorFramework.Standard
         public override int Traverse()
         {
             // Pop the pending text
-            if (outputUp.connected())
+            if (outputUp.connected() && outputUp.connection(0).body is StartTaskNode taskNode && !string.IsNullOrEmpty(taskNode.entityIDforConfirmedResponse) && TaskManager.interactionOverrides.ContainsKey(taskNode.entityIDforConfirmedResponse))
             {
-                if (outputUp.connection(0).body is StartTaskNode taskNode && !string.IsNullOrEmpty(taskNode.entityIDforConfirmedResponse))
+                
+                Debug.Log("Task failed: "  + Canvas.canvasName);
+                var stack = TaskManager.interactionOverrides[taskNode.entityIDforConfirmedResponse];
+                if(stack.Count > 0)
                 {
-                    var stack = TaskManager.interactionOverrides[taskNode.entityIDforConfirmedResponse];
-                    if(stack.Count > 0)
-                    {
-                        TaskManager.interactionOverrides[taskNode.entityIDforConfirmedResponse].Pop();
-                    }
+                    TaskManager.interactionOverrides[taskNode.entityIDforConfirmedResponse].Pop();
                 }
             }
 
             SectorManager.instance.player.alerter.showMessage("TASK FAILED", "clip_fail");
-            if (outputUp.connected())
+            if (outputUp.connected() && outputUp.connection(0).body is StartTaskNode node)
             {
-                if (outputUp.connection(0).body is StartTaskNode taskNode)
-                {
-                    taskNode.forceTask = false; // you shouldn't force tasks you can fail
-                    string taskID = taskNode.taskID;
-                    TaskManager.Instance.endTask(taskID);
-                }
+                node.forceTask = false; // you shouldn't force tasks you can fail
+                string taskID = node.taskID;
+                TaskManager.Instance.endTask(taskID);
+                (Canvas.Traversal as MissionTraverser).taskHash++;
             }
 
             return 0;

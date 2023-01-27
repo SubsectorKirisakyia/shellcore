@@ -17,7 +17,7 @@ public struct RewardWrapper
 
 namespace NodeEditorFramework.Standard
 {
-    [Node(false, "Tasks/Finish Task Node")]
+    [Node(false, "Tasks/Finish Task Node", typeof(QuestCanvas))]
     public class FinishTaskNode : Node
     {
         //Node things
@@ -82,7 +82,7 @@ namespace NodeEditorFramework.Standard
             height = 180f;
             if ((speakToEntity = GUILayout.Toggle(speakToEntity, "Speak to entity")))
             {
-                GUILayout.Label("Reward giver ID:");
+                GUILayout.Label("Reward Giver ID:");
                 rewardGiverID = GUILayout.TextField(rewardGiverID, GUILayout.Width(200f));
                 if (WorldCreatorCursor.instance != null)
                 {
@@ -93,7 +93,7 @@ namespace NodeEditorFramework.Standard
                     }
                 }
 
-                GUILayout.Label("Reward text:");
+                GUILayout.Label("Reward Text:");
                 rewardText = GUILayout.TextArea(rewardText, GUILayout.ExpandHeight(false), GUILayout.Width(200f));
                 height += GUI.skin.textArea.CalcHeight(new GUIContent(rewardText), 200f);
                 if (!(useEntityColor = GUILayout.Toggle(useEntityColor, "Use entity color")))
@@ -102,8 +102,23 @@ namespace NodeEditorFramework.Standard
                     float r, g, b;
                     GUILayout.BeginHorizontal();
                     r = RTEditorGUI.FloatField(textColor.r);
+                    if (textColor.r < 0 || textColor.r > 1)
+                    {
+                        r = RTEditorGUI.FloatField(textColor.r = 1);
+                        Debug.LogWarning("Can't register this numbers!");
+                    }
                     g = RTEditorGUI.FloatField(textColor.g);
+                    if (textColor.g < 0 || textColor.g > 1)
+                    {
+                        g = RTEditorGUI.FloatField(textColor.g = 1);
+                        Debug.LogWarning("Can't register this numbers!");
+                    }
                     b = RTEditorGUI.FloatField(textColor.b);
+                    if (textColor.b < 0 || textColor.b > 1)
+                    {
+                        b = RTEditorGUI.FloatField(textColor.b = 1);
+                        Debug.LogWarning("Can't register this numbers!");
+                    }
                     GUILayout.EndHorizontal();
                     textColor = new Color(r, g, b);
                 }
@@ -290,30 +305,19 @@ namespace NodeEditorFramework.Standard
             if (!speakToEntity)
             {
                 RewardPlayer();
+                (Canvas.Traversal as MissionTraverser).taskHash++;
                 return 2;
             }
 
-            TaskManager.speakerIDList.Add(rewardGiverID);
-            if (TaskManager.interactionOverrides.ContainsKey(rewardGiverID))
+            InteractAction action = new InteractAction();
+            action.action = new UnityEngine.Events.UnityAction(() =>
             {
-                Debug.Log("Contains key");
-                TaskManager.interactionOverrides[rewardGiverID].Push(() =>
-                {
-                    TaskManager.interactionOverrides[rewardGiverID].Pop();
-                    OnDialogue();
-                });
-            }
-            else
-            {
-                var stack = new Stack<UnityEngine.Events.UnityAction>();
-                stack.Push(() =>
-                {
-                    TaskManager.interactionOverrides[rewardGiverID].Pop();
-                    OnDialogue();
-                });
-                TaskManager.interactionOverrides.Add(rewardGiverID, stack);
-                Debug.Log("ADDED " + rewardGiverID);
-            }
+                TaskManager.interactionOverrides[rewardGiverID].Pop();
+                OnDialogue();
+                (Canvas.Traversal as MissionTraverser).taskHash++;
+            });
+
+            TaskManager.Instance.PushInteractionOverrides(rewardGiverID, action, Canvas.Traversal as Traverser);
 
             TryAddObjective();
             return -1;

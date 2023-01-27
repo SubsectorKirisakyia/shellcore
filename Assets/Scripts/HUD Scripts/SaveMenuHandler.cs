@@ -35,7 +35,8 @@ public class SaveMenuHandler : GUIWindowScripts
         "Alpha 4.1.1",
         "Alpha 4.2.0",
         "Alpha 4.3.0",
-        "Beta 0.0.0"
+        "Beta 0.0.0",
+        "Beta 0.1.1"
     };
 
     public Sprite[] episodeSprites;
@@ -203,12 +204,14 @@ public class SaveMenuHandler : GUIWindowScripts
     {
         base.Activate();
         Initialize();
+        GetComponent<RectTransform>().anchoredPosition = Vector2.zero;
     }
 
     public void Activate(string resourcePath = "")
     {
         base.Activate();
         Initialize(resourcePath);
+        GetComponent<RectTransform>().anchoredPosition = Vector2.zero;
     }
 
     public override void CloseUI()
@@ -247,6 +250,10 @@ public class SaveMenuHandler : GUIWindowScripts
         indexToMigrate = index;
         switch (saves[index].version)
         {
+            case "Beta 0.1.1":
+                migratePrompt.transform.Find("Background").GetComponentInChildren<Text>().text = "This will fix Trial by Combat's mission name and a couple of others as well. "
+                                                                                                 + "Backup first! (Below save icon delete button)";
+                break;
             case "Alpha 2.1.0":
                 migratePrompt.transform.Find("Background").GetComponentInChildren<Text>().text = "This will reset your task progress, reputation and place you in the "
                                                                                                  + "Spawning Grounds. Backup first! (Below save icon delete button)";
@@ -261,11 +268,38 @@ public class SaveMenuHandler : GUIWindowScripts
         migratePrompt.ToggleActive();
     }
 
+    private void ChangeMissionName(PlayerSave save, string oldName, string newName)
+    {
+        var mission = save.missions.Find(m => m.name == oldName);
+        if (mission == null) return;
+        mission.name = newName;
+        if (mission.checkpoint != null && mission.checkpoint.Contains(oldName))
+        {
+            int oldIndex = mission.checkpoint.IndexOf(oldName);
+            mission.checkpoint = mission.checkpoint.Remove(oldIndex, oldName.Length);
+            mission.checkpoint = mission.checkpoint.Insert(oldIndex, newName);
+        }
+
+        foreach (Mission prereqMission in save.missions)
+        {
+            if (!prereqMission.prerequisites.Contains(oldName)) continue;
+            prereqMission.prerequisites.Remove(oldName);
+            prereqMission.prerequisites.Add(newName);
+        }
+    }
+
     public void Migrate()
     {
         var save = saves[indexToMigrate];
         switch (save.version)
         {
+            case "Beta 0.1.1":
+                ChangeMissionName(save, "The Carrier Conundrum", "Carrier Conundrum");
+                ChangeMissionName(save, "The Turret Turmoil", "Turret Turmoil");
+                ChangeMissionName(save, "Trial By Combat", "Trial by Combat");
+                File.WriteAllText(paths[indexToMigrate], JsonUtility.ToJson(save));
+                SaveMenuIcon.LoadSaveByPath(paths[indexToMigrate], true);
+                break;
             case "Beta 0.0.0":
                 var mission = save.missions.Find(m => m.name == "Truthful Revelation?");
                 if (mission != null) mission.name = "Truthful Revelation";

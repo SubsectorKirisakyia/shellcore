@@ -115,6 +115,12 @@ public class AbilityButtonScript : MonoBehaviour, IPointerClickHandler, IPointer
         }
 
         description += $"\n{AbilityUtilities.GetDescription(ability)}";
+
+        if (ability is SpawnDrone || (ability.GetAbilityType() == AbilityHandler.AbilityTypes.Skills && PlayerPrefs.GetString("AllowAutocastSkills", "False") == "True"))
+        {
+            description += $"\nHold {GetPrettyStringFromKeycode(InputManager.keys[KeyName.AutoCastBuyTurret].overrideKey)} to toggle auto cast";
+        }
+
         abilityInfo = description;
 
         if (tooltip)
@@ -172,6 +178,7 @@ public class AbilityButtonScript : MonoBehaviour, IPointerClickHandler, IPointer
         {
             tooltip.transform.position = Input.mousePosition;
         }
+
 
         if (abilities.Count <= 0) 
         {
@@ -264,9 +271,10 @@ public class AbilityButtonScript : MonoBehaviour, IPointerClickHandler, IPointer
         {
             image.color = new Color(0, 0, 0.3F); // make the background dark blue
         }
-        else if (abilities[0].GetAbilityType() != AbilityHandler.AbilityTypes.Passive && (abilities[0].State == Ability.AbilityState.Active ||
+        else if(abilities[0].GetAbilityType() != AbilityHandler.AbilityTypes.Passive && (abilities[0].State == Ability.AbilityState.Active ||
                                                                                           abilities[0].State == Ability.AbilityState.Charging ||
-                                                                                          (abilities[0] is WeaponAbility && abilities[0].State == Ability.AbilityState.Ready)))
+                                                                                          (abilities[0] is WeaponAbility && abilities[0].isEnabled) ||
+                                                                                          abilities[0].AutoCast))
         {
             image.color = PlayerCore.GetPlayerFactionColor();
         }
@@ -277,25 +285,7 @@ public class AbilityButtonScript : MonoBehaviour, IPointerClickHandler, IPointer
 
         cooldown.fillAmount = abilities[0].TimeUntilReady() / abilities[0].GetCDDuration();
 
-        if (!entity.GetIsDead())
-        {
-            bool hotkeyAccepted = (InputManager.GetKeyDown(keycode) && !InputManager.GetKey(KeyName.TurretQuickPurchase))
-                                  && !PlayerViewScript.paused && !DialogueSystem.isInCutscene;
-            if (abilities[0] is WeaponAbility)
-            {
-                foreach (var ab in abilities)
-                {
-                    if (hotkeyAccepted || (clicked && Input.mousePosition == oldInputMousePos))
-                    {
-                        ab.Activate();
-                    }
-                }
-            }
-            else if (hotkeyAccepted || (clicked && Input.mousePosition == oldInputMousePos))
-            {
-                abilities[0].Activate();
-            }
-        }
+        UpdateAbilityActivation();
 
         clicked = false;
 
@@ -314,6 +304,49 @@ public class AbilityButtonScript : MonoBehaviour, IPointerClickHandler, IPointer
             gleamed = true;
             gleaming = true;
             gleam.color = Color.white;
+        }
+    }
+
+    private void UpdateAbilityActivation()
+    {
+        if (entity.GetIsDead()) return;
+
+        bool hotkeyBlockedByVendor = false;
+        if (InputManager.GetKey(KeyName.AutoCastBuyTurret))
+        {
+            IInteractable closest = ProximityManager.GetClosestInteractable(entity);
+            if (closest is IVendor vendor)
+            {
+                var range = vendor.GetVendingBlueprint().range;
+                if ((closest.GetTransform().position - entity.transform.position).sqrMagnitude <= range) {
+                    hotkeyBlockedByVendor = true;
+                }
+            }
+        }
+        
+        bool hotkeyAccepted = InputManager.GetKeyDown(keycode) && !hotkeyBlockedByVendor
+                            && !PlayerViewScript.paused && !DialogueSystem.isInCutscene;
+
+        if (!hotkeyAccepted && !(clicked && Input.mousePosition == oldInputMousePos)) return;
+        if (InputManager.GetKey(KeyName.AutoCastBuyTurret))
+        {
+            bool autoCast = !abilities[0].AutoCast;
+            foreach (var ab in abilities)
+            {
+                ab.AutoCast = autoCast;
+            }
+            return;
+        }
+        if (abilities[0] is WeaponAbility)
+        {
+            foreach (var ab in abilities)
+            {
+                ab.Activate();
+            }
+        }
+        else
+        {
+            abilities[0].Activate();
         }
     }
 
@@ -346,9 +379,9 @@ public class AbilityButtonScript : MonoBehaviour, IPointerClickHandler, IPointer
                 var cameraPos = CameraScript.instance.transform.position;
                 cameraPos.z = 0;
                 range = Camera.main.WorldToScreenPoint(cameraPos + new Vector3(0, range)).y - Camera.main.WorldToScreenPoint(cameraPos).y;
-                range *= 2;
+                range *= UIScalerScript.GetScale() * 2;
 
-                circles[ability].rectTransform.anchoredPosition = Camera.main.WorldToScreenPoint(ability.transform.position);
+                circles[ability].rectTransform.anchoredPosition = Camera.main.WorldToScreenPoint(ability.transform.position) * UIScalerScript.GetScale();
                 circles[ability].rectTransform.sizeDelta = new Vector2(range, range);
                 //Debug.Log(Camera.main.ScreenToWorldPoint((Vector3)rangeCircle.rectTransform.anchoredPosition +
                 //    new Vector3(0,range / 2,CameraScript.zLevel) ) - abilities[0].transform.position);
@@ -359,11 +392,21 @@ public class AbilityButtonScript : MonoBehaviour, IPointerClickHandler, IPointer
     public void OnPointerEnter(PointerEventData eventData)
     {
         //create tooltip
-        tooltip = Instantiate(tooltipPrefab);
-        RectTransform rect = tooltip.GetComponent<RectTransform>();
-        rect.position = eventData.position;
-        rect.SetParent(transform.parent, true);
-        rect.SetAsLastSibling();
+        if (!dragging) 
+        {
+            if (tooltip) 
+            {
+                Destroy(tooltip);
+            }
+            tooltip = Instantiate(tooltipPrefab, transform.parent);
+            RectTransform rect = tooltip.GetComponent<RectTransform>();
+            rect.position = Input.mousePosition;
+            rect.SetAsLastSibling();
+            Text text = tooltip.transform.Find("Text").GetComponent<Text>();
+            text.text = abilityInfo;
+            rect.sizeDelta = new Vector2(text.preferredWidth + 16f, text.preferredHeight + 16);
+        }
+
         ClearCircles();
         if (abilities.Count > 0 && abilities[0].GetRange() > 0)
         {
@@ -379,10 +422,6 @@ public class AbilityButtonScript : MonoBehaviour, IPointerClickHandler, IPointer
 
         //rangeCircle.enabled = true;
         PollRangeCircle();
-        Text text = tooltip.transform.Find("Text").GetComponent<Text>();
-        text.text = abilityInfo;
-
-        rect.sizeDelta = new Vector2(text.preferredWidth + 16f, text.preferredHeight + 16);
     }
 
     private void ClearCircles()

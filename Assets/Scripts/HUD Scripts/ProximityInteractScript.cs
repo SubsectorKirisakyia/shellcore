@@ -30,24 +30,7 @@ public class ProximityInteractScript : MonoBehaviour
     {
         if (player != null)
         {
-            closest = null; // get the closest entity
-            foreach (IInteractable interactable in AIData.interactables)
-            {
-                if (interactable as PlayerCore || interactable == null || !interactable.GetInteractible())
-                {
-                    continue;
-                }
-
-                if (closest == null)
-                {
-                    closest = interactable;
-                }
-                else if ((interactable.GetTransform().position - player.transform.position).sqrMagnitude <=
-                         (closest.GetTransform().position - player.transform.position).sqrMagnitude)
-                {
-                    closest = interactable;
-                }
-            }
+            closest = ProximityManager.GetClosestInteractable(player);
 
             if (closest is IVendor vendor)
             {
@@ -58,7 +41,7 @@ public class ProximityInteractScript : MonoBehaviour
                 {
                     for (int i = 0; i < blueprint.items.Count; i++)
                     {
-                        if (InputManager.GetKey(KeyName.TurretQuickPurchase))
+                        if (InputManager.GetKey(KeyName.AutoCastBuyTurret))
                         {
                             if (Input.GetKeyDown((1 + i).ToString()))
                             {
@@ -108,7 +91,11 @@ public class ProximityInteractScript : MonoBehaviour
                     interactIndicator.localScale = new Vector3(1, Mathf.Min(1, y + 0.1F), 1);
                 }
 
-                interactIndicator.anchoredPosition = Camera.main.WorldToScreenPoint(closest.GetTransform().position) + new Vector3(0, 50);
+                var worldToScreenPoint = Camera.main.WorldToScreenPoint(closest.GetTransform().position);
+                worldToScreenPoint.x *= UIScalerScript.GetScale();
+                worldToScreenPoint.y *= UIScalerScript.GetScale();
+                interactIndicator.anchoredPosition = 
+                    worldToScreenPoint + new Vector3(0, 50);
                 if (InputManager.GetKeyUp(KeyName.Interact) && !PlayerViewScript.GetIsWindowActive())
                 {
                     ActivateInteraction(closest); // key received; activate interaction

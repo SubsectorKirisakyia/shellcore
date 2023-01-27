@@ -15,6 +15,11 @@ public class WCSiegeWaveHandler : MonoBehaviour
         AddEntity("", 0, "", 1);
     }
 
+    void OnDisable()
+    {
+        //Debug.LogWarning("Closes Wave Builder."); //Fix?
+    }
+
     public void Initialize(List<SiegeEntity> entities)
     {
         foreach (var ent in entities)
@@ -37,6 +42,7 @@ public class WCSiegeWaveHandler : MonoBehaviour
         var inField2 = gObj.GetComponentsInChildren<InputField>()[1];
         var inField3 = gObj.GetComponentsInChildren<InputField>()[2];
         var dropdown = gObj.GetComponentInChildren<Dropdown>();
+        ItemPropertyDisplay.AddCustomFactionsToDropdown(dropdown);
 
         inField1.text = name;
         inField2.text = time + "";
@@ -50,6 +56,9 @@ public class WCSiegeWaveHandler : MonoBehaviour
             {
                 waveEntities.Remove((inField1, inField2, inField3, dropdown));
                 Destroy(inField1.transform.parent.gameObject);
+                Destroy(inField2.transform.parent.gameObject);
+                Destroy(inField3.transform.parent.gameObject);
+                Destroy(dropdown.transform.parent.gameObject);
             }
         ));
 

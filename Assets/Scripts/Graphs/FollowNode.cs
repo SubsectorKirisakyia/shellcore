@@ -68,7 +68,6 @@ namespace NodeEditorFramework.Standard
             }
 
             RTEditorGUI.Seperator();
-
             GUILayout.BeginHorizontal();
             if (useFollowerInput)
             {
@@ -92,32 +91,19 @@ namespace NodeEditorFramework.Standard
 
             GUILayout.EndHorizontal();
 
-            if (!stopFollowing)
+            if (!useFollowerInput)
             {
-                GUILayout.BeginHorizontal();
-                if (useTargetInput)
+                GUILayout.Label("Follower ID:");
+                followerID = GUILayout.TextField(followerID);
+                if (WorldCreatorCursor.instance != null)
                 {
-                    if (TargetInput == null)
+                    if (GUILayout.Button("Select", GUILayout.ExpandWidth(false)))
                     {
-                        ConnectionKnob input = connectionKnobs.Find((x) => { return x.name == "TargetInput"; });
-
-                        if (input == null)
-                        {
-                            TargetInput = CreateConnectionKnob(IDInStyle);
-                            TargetInput.name = "TargetInput";
-                        }
-                        else
-                        {
-                            TargetInput = input;
-                        }
+                        WorldCreatorCursor.selectEntity += SetFollowerID;
+                        WorldCreatorCursor.instance.EntitySelection();
                     }
-
-                    TargetInput.DisplayLayout();
                 }
-
-                GUILayout.EndHorizontal();
             }
-
 
             useFollowerInput = RTEditorGUI.Toggle(useFollowerInput, "Get follower ID from input", GUILayout.MinWidth(400));
             if (GUI.changed)
@@ -131,20 +117,6 @@ namespace NodeEditorFramework.Standard
                 {
                     DeleteConnectionPort(FollowerInput);
                     FollowerInput = null;
-                }
-            }
-
-            if (!useFollowerInput)
-            {
-                GUILayout.Label("Follower ID");
-                followerID = GUILayout.TextField(followerID);
-                if (WorldCreatorCursor.instance != null)
-                {
-                    if (GUILayout.Button("Select", GUILayout.ExpandWidth(false)))
-                    {
-                        WorldCreatorCursor.selectEntity += SetFollowerID;
-                        WorldCreatorCursor.instance.EntitySelection();
-                    }
                 }
             }
 
@@ -169,7 +141,7 @@ namespace NodeEditorFramework.Standard
 
                 if (!useTargetInput)
                 {
-                    GUILayout.Label("Target ID");
+                    GUILayout.Label("Target ID:");
                     targetID = GUILayout.TextField(targetID);
                     if (WorldCreatorCursor.instance != null)
                     {
@@ -180,11 +152,36 @@ namespace NodeEditorFramework.Standard
                         }
                     }
                 }
-            }
 
-            GUILayout.BeginHorizontal();
-            disallowAggression = GUILayout.Toggle(disallowAggression, "Disallow Aggression", GUILayout.MinWidth(40));
-            GUILayout.EndHorizontal();
+                if (!stopFollowing)
+                {
+                    GUILayout.BeginHorizontal();
+                    if (useTargetInput)
+                    {
+                        if (TargetInput == null)
+                        {
+                            ConnectionKnob input = connectionKnobs.Find((x) => { return x.name == "TargetInput"; });
+
+                            if (input == null)
+                            {
+                                TargetInput = CreateConnectionKnob(IDInStyle);
+                                TargetInput.name = "TargetInput";
+                            }
+                            else
+                            {
+                                TargetInput = input;
+                            }
+                        }
+
+                        TargetInput.DisplayLayout();
+                    }
+
+                    GUILayout.EndHorizontal();
+                }
+                GUILayout.BeginHorizontal();
+                disallowAggression = GUILayout.Toggle(disallowAggression, "Disallow Aggression", GUILayout.MinWidth(40));
+                GUILayout.EndHorizontal();
+            }
         }
 
         void SetFollowerID(string ID)

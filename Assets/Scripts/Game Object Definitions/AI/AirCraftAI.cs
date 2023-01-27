@@ -298,7 +298,7 @@ public class AirCraftAI : MonoBehaviour
                             if (timer >= 0.3F)
                             {
                                 timer = 0;
-                                movement.SetMoveTarget(aggroPos + new Vector3(Random.Range(-1F, 1F), Random.Range(-1F, 1F)), 9);
+                                movement.SetMoveTarget(aggroPos + new Vector3(Random.Range(-4, 4), Random.Range(-4, 4)), 9);
                             }
                             else
                             {
@@ -367,7 +367,9 @@ public class AirCraftAI : MonoBehaviour
                     if (allowRetreat && !(module is FollowAI))
                     {
                         // check if retreat necessary
-                        if (craft.GetHealth()[0] < retreatTreshold * craft.GetMaxHealth()[0])
+                        if (craft.GetHealth()[0] < retreatTreshold * craft.GetMaxHealth()[0] 
+                            && SectorManager.instance.current.type != Sector.SectorType.BattleZone
+                            && SectorManager.instance.current.type != Sector.SectorType.SiegeZone)
                         {
                             state = AIState.Retreating;
                             //Debug.Log(craft.name + "[ " + craft.faction + " ] retreating!");

@@ -424,7 +424,7 @@ MonoBehaviour:
   - ID: AbilitySprite27
     obj: {fileID: 21300000, guid: 43b4ed1c01ba04d4db7750c3cdf9fbd7, type: 3}
   - ID: AbilitySprite28
-    obj: {fileID: 21300000, guid: 1a3698a9faf220840807b523aacee481, type: 3}
+    obj: {fileID: 21300000, guid: e54273b05980c67499cc83bf24b46122, type: 3}
   - ID: absorption_sprite
     obj: {fileID: 21300000, guid: 18fb550266cdd2e409962be44e8d481b, type: 3}
   - ID: AbilitySprite29
@@ -432,9 +432,9 @@ MonoBehaviour:
   - ID: AbilitySprite30
     obj: {fileID: 21300000, guid: bfa3a5bac7bec5b47a11d7cb8b410298, type: 3}
   - ID: AbilitySprite31
-    obj: {fileID: 21300000, guid: bfa3a5bac7bec5b47a11d7cb8b410298, type: 3}
+    obj: {fileID: 21300000, guid: 96adac8c0f56ffa468508e50fa3a4b4d, type: 3}
   - ID: AbilitySprite32
-    obj: {fileID: 21300000, guid: bfa3a5bac7bec5b47a11d7cb8b410298, type: 3}
+    obj: {fileID: 21300000, guid: e54273b05980c67499cc83bf24b46122, type: 3}
   - ID: AbilitySprite33
     obj: {fileID: 21300000, guid: c28990011ed7cb449a0942ddf28b0aa2, type: 3}
   - ID: AbilitySprite34
@@ -604,14 +604,88 @@ MonoBehaviour:
   - ID: clip_disrupt
     obj: {fileID: 8300000, guid: 9e174542003196242a98b3159bcdfa60, type: 3}
   - ID: AbilitySprite14
-    obj: {fileID: 21300000, guid: 2d48a9f898d4c35418709ea694fa896a, type: 3}
+    obj: {fileID: 21300000, guid: 8ce480eac5b7fe143aa157b1cb4b2b23, type: 3}
   - ID: AbilitySprite15
     obj: {fileID: 21300000, guid: 8ce480eac5b7fe143aa157b1cb4b2b23, type: 3}
   - ID: AbilitySprite39
-    obj: {fileID: 21300000, guid: 2d48a9f898d4c35418709ea694fa896a, type: 3}
+    obj: {fileID: 21300000, guid: 8ce480eac5b7fe143aa157b1cb4b2b23, type: 3}
   - ID: debrisparticles
     obj: {fileID: 5907327277448150338, guid: 7945935baf25a1148a59c5a23e4c44b9, type: 3}
   - ID: asteroidparticles
     obj: {fileID: 5907327277448150338, guid: 16a86ec307cfd0145931203c8a57c814, type: 3}
   - ID: cloudparticles
     obj: {fileID: 2473349850264944323, guid: 3fe92a521a7a8d64eb5f153d12a2d754, type: 3}
+  - ID: RectangleEffectScript_skin2
+    obj: {fileID: 2100000, guid: d1d7236e8c6aa7f499d9ef845eb3c30f, type: 2}
+  - ID: music_fast_3
+    obj: {fileID: 8300000, guid: 1d81ed67968a8d44a96c162078ca2346, type: 3}
+  - ID: music_siege_3
+    obj: {fileID: 8300000, guid: e97fffd9e586f9b4193bd903aaa98269, type: 3}
+  - ID: music_overworld_3
+    obj: {fileID: 8300000, guid: 108733ea5ac27ee47ab57d4793633541, type: 3}
+  - ID: music_fast_4
+    obj: {fileID: 8300000, guid: f506f459b8931344cb9844feaadfdea1, type: 3}
+  - ID: defenseturretoutpostsprite
+    obj: {fileID: 21300000, guid: f647c3a12c6e67c4b95d660e9688582b, type: 3}
+  - ID: harvesterturretoutpostsprite
+    obj: {fileID: 21300000, guid: f5f999a1d4a12354c89742a49a7336c0, type: 3}
+  - ID: missileturretoutpostsprite
+    obj: {fileID: 21300000, guid: c995218d9de72b743ada1d5c1e17b7dd, type: 3}
+  - ID: siegeturretoutpostsprite
+    obj: {fileID: 21300000, guid: 43133dde5e9c045478a106ea871c58ef, type: 3}
+  - ID: torpedoturretoutpostsprite
+    obj: {fileID: 21300000, guid: 25e1869af3690fe468205f453d91bd76, type: 3}
+  - ID: speedertankbunkersprite
+    obj: {fileID: 21300000, guid: 110b58176c2d3ca4ead190072bd501b1, type: 3}
+  - ID: siegetankbunkersprite
+    obj: {fileID: 21300000, guid: f2ed8d447a1c6db45a09cd6ca9c6b6d5, type: 3}
+  - ID: rockettankbunkersprite
+    obj: {fileID: 21300000, guid: 8bf5f2fb0a7e7344c83a480cce58ce61, type: 3}
+  - ID: missiletankbunkersprite
+    obj: {fileID: 21300000, guid: 14da22d1187194e4f892acae302dd565, type: 3}
+  - ID: lasertankbunkersprite
+    obj: {fileID: 21300000, guid: c9afda8b233e5d74fb825c7a4d8cdf58, type: 3}
+  - ID: bullettankbunkersprite
+    obj: {fileID: 21300000, guid: 3dc752a97917f8447afc309e43b42352, type: 3}
+  - ID: beamtankbunkersprite
+    obj: {fileID: 21300000, guid: 9418ff9599f08074d9a0fccec4459bed, type: 3}
+  - ID: healer_tower_shell_sprite
+    obj: {fileID: 21300000, guid: 9368f530742c04a4c8ad88d22550c14b, type: 3}
+  - ID: healer_tower_sprite
+    obj: {fileID: 21300000, guid: e81fd38757f9e0440b9b1a2c1747dde6, type: 3}
+  - ID: healer_tower
+    obj: {fileID: 11400000, guid: f67f5e22ddf9b3442a75afbacdfacc86, type: 2}
+  - ID: circle_holder
+    obj: {fileID: 0}
+  - ID: tower_base
+    obj: {fileID: 5227766161376734598, guid: a2ffbfcd41eecf94bb2d32aad19571f9, type: 3}
+  - ID: speed_tower_shell_sprite
+    obj: {fileID: 21300000, guid: 51a934ea9fb77bd488718ee4ce6e42c2, type: 3}
+  - ID: speed_tower_sprite
+    obj: {fileID: 21300000, guid: 3fec2eacb2b1b26438563b3684cb85d0, type: 3}
+  - ID: damage_resistance_tower_shell_sprite
+    obj: {fileID: 21300000, guid: 4e6d55fe9b7bee44298e31c0760614e9, type: 3}
+  - ID: damage_resistance_tower_sprite
+    obj: {fileID: 21300000, guid: 89effb84dcf21ac48a2652c9b16ad2c3, type: 3}
+  - ID: healertowersprite
+    obj: {fileID: 21300000, guid: f67fc2363af582a4a96d95056af50458, type: 3}
+  - ID: damage_resistance_tower
+    obj: {fileID: 11400000, guid: c7ba0f3c50faa3842a09af14999332a5, type: 2}
+  - ID: speed_tower
+    obj: {fileID: 11400000, guid: c1f23efdf81d52048b34dcdd41812881, type: 2}
+  - ID: music_transpose
+    obj: {fileID: 8300000, guid: bf3a559827031424da9f2fda5976a68e, type: 3}
+  - ID: music_fxlp
+    obj: {fileID: 8300000, guid: 262a187a811371840a43f2e29b40a0e4, type: 3}
+  - ID: music_whimper
+    obj: {fileID: 8300000, guid: c749f228bec91a64ab270ea7d66ae6e0, type: 3}
+  - ID: music_blue4
+    obj: {fileID: 8300000, guid: 37f4335c6fe85234889253a1573fb5ca, type: 3}
+  - ID: AbilitySprite45
+    obj: {fileID: 21300000, guid: c28990011ed7cb449a0942ddf28b0aa2, type: 3}
+  - ID: speeder_missile_prefab
+    obj: {fileID: 1112368188499930, guid: 91ef49261c2c7874db760f7a09305e94, type: 3}
+  - ID: AbilitySprite46
+    obj: {fileID: 21300000, guid: ff7e73995e8e1434c8f9fd14b0c400c1, type: 3}
+  - ID: energytowersprite
+    obj: {fileID: 21300000, guid: 8f526b4847545234a9555ef4b6e35877, type: 3}

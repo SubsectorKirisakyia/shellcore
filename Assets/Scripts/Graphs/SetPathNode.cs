@@ -88,7 +88,7 @@ namespace NodeEditorFramework.Standard
 
             if (!useIDInput)
             {
-                GUILayout.Label("Entity ID");
+                GUILayout.Label("Entity ID:");
                 entityID = GUILayout.TextField(entityID);
                 if (WorldCreatorCursor.instance != null)
                 {
@@ -122,7 +122,7 @@ namespace NodeEditorFramework.Standard
             if (useCustomMass = GUILayout.Toggle(useCustomMass, "Use Custom Weight", GUILayout.MinWidth(400)))
             {
                 GUILayout.Label("Weight");
-                mass = float.Parse(GUILayout.TextField(1.ToString(), GUILayout.MinWidth(400)));
+                mass = float.Parse(GUILayout.TextField(mass.ToString(), GUILayout.MinWidth(400)));
                 if (mass <= 0)
                 {
                     mass = float.Parse(GUILayout.TextField(1.ToString(), GUILayout.MinWidth(400)));

@@ -339,7 +339,7 @@ public class SectorManager : MonoBehaviour
                 minimapSectorBorders = new Dictionary<Sector, LineRenderer>();
                 foreach (string file in files)
                 {
-                    if (file.Contains(".meta") || file.Contains("ResourceData.txt"))
+                    if (file.Contains(".meta") || file.Contains("ResourceData.txt") || file.Contains(".DS_Store"))
                     {
                         continue;
                     }
@@ -414,7 +414,7 @@ public class SectorManager : MonoBehaviour
                     }
 
                     string sectorjson = System.IO.File.ReadAllText(file);
-                    SectorCreatorMouse.SectorData data = JsonUtility.FromJson<SectorCreatorMouse.SectorData>(sectorjson);
+                    Sector.SectorData data = JsonUtility.FromJson<Sector.SectorData>(sectorjson);
                     // Debug.Log("Platform JSON: " + data.platformjson);
                     // Debug.Log("Sector JSON: " + data.sectorjson);
                     Sector curSect = ScriptableObject.CreateInstance<Sector>();
@@ -468,7 +468,7 @@ public class SectorManager : MonoBehaviour
             try
             {
                 string sectorjson = System.IO.File.ReadAllText(path);
-                SectorCreatorMouse.SectorData data = JsonUtility.FromJson<SectorCreatorMouse.SectorData>(sectorjson);
+                Sector.SectorData data = JsonUtility.FromJson<Sector.SectorData>(sectorjson);
                 Debug.Log("Platform JSON: " + data.platformjson);
                 Debug.Log("Sector JSON: " + data.sectorjson);
                 Sector curSect = ScriptableObject.CreateInstance<Sector>();
@@ -535,13 +535,14 @@ public class SectorManager : MonoBehaviour
     {
         if (!sectorLoaded)
         {
+            episode = Mathf.Max(0, episode-1);
             if (episode >= sectors.Count)
             {
                 episode = sectors.Count - 1;
             }
-
             current = sectors[episode];
             VersionNumberScript.SetEpisodeName(episode);
+            Camera.main.transform.position = new Vector3(current.bounds.x + current.bounds.w / 2, current.bounds.y - current.bounds.h / 2, -10);
         }
     }
 
@@ -550,18 +551,97 @@ public class SectorManager : MonoBehaviour
     {
         var blueprint = ScriptableObject.CreateInstance<EntityBlueprint>();
 
-        // try parsing directly, if that fails try fetching the entity file
+        // try parsing directly
         try
         {
             JsonUtility.FromJsonOverwrite(jsonOrName, blueprint);
+            return blueprint;
         }
         catch
         {
-            JsonUtility.FromJsonOverwrite(System.IO.File.ReadAllText
-                (System.IO.Path.Combine(instance.resourcePath, "Entities", jsonOrName + ".json")), blueprint);
+            
         }
 
-        return blueprint;
+        // if that fails try fetching the entity file
+        try
+        {
+            JsonUtility.FromJsonOverwrite(System.IO.File.ReadAllText
+                (System.IO.Path.Combine(instance.resourcePath, "Entities", jsonOrName + ".json")), blueprint);
+            return blueprint;
+        }
+        catch
+        {
+
+        }
+
+        // if that fails try grabbing a drone
+        try
+        {
+            JsonUtility.FromJsonOverwrite(DroneUtilities.GetDroneSpawnDataByShorthand(jsonOrName).drone, blueprint);
+            return blueprint;
+        }
+        catch
+        {
+
+        }
+
+        throw new System.Exception("Blueprint not found.");
+    }
+
+    public bool TryGettingVendorDefinition(ref EntityBlueprint blueprint, string json) 
+    {
+        if (string.IsNullOrEmpty(json)) return false;
+        VendorDefinition def = ScriptableObject.CreateInstance<VendorDefinition>();
+        // Try grabbing the vendor definition directly
+        try
+        {
+            JsonUtility.FromJsonOverwrite(json, def);
+            var dialogueRef = blueprint.dialogue;
+            blueprint = TryGettingEntityBlueprint(def.entityBlueprint);
+            blueprint.dialogue = dialogueRef;
+            blueprint.dialogue.vendingBlueprint = ScriptableObject.CreateInstance<VendingBlueprint>();
+            JsonUtility.FromJsonOverwrite(def.vendingBlueprint, blueprint.dialogue.vendingBlueprint);
+            return true;
+        }
+        catch (System.Exception)
+        {
+        }
+
+
+        // Try grabbing the vendor definition from the Entities folder
+        try
+        {
+            JsonUtility.FromJsonOverwrite(System.IO.File.ReadAllText
+                (System.IO.Path.Combine(instance.resourcePath, "Entities", json + ".json")), def);
+            if (!string.IsNullOrEmpty(def.vendingBlueprint)) 
+            {
+                var dialogueRef = blueprint.dialogue;
+                blueprint = TryGettingEntityBlueprint(def.entityBlueprint);
+                blueprint.dialogue = dialogueRef;
+                blueprint.dialogue.vendingBlueprint = ScriptableObject.CreateInstance<VendingBlueprint>();
+                JsonUtility.FromJsonOverwrite(def.vendingBlueprint, blueprint.dialogue.vendingBlueprint);
+                return true;
+            }
+        }
+        catch (System.Exception)
+        {
+        }
+
+        
+        // Use json as an entity blueprint
+        try
+        {
+            var dialogueRef = blueprint.dialogue;
+            blueprint = TryGettingEntityBlueprint(json);
+            blueprint.dialogue = dialogueRef;
+            return true;
+        }
+        catch (System.Exception)
+        {
+
+        }
+
+        return true;
     }
 
     public Entity SpawnEntity(EntityBlueprint blueprint, Sector.LevelEntity data)
@@ -644,14 +724,7 @@ public class SectorManager : MonoBehaviour
                 }
             case EntityBlueprint.IntendedType.Bunker:
                 {
-                    json = data.blueprintJSON;
-                    if (!string.IsNullOrEmpty(json))
-                    {
-                        var dialogueRef = blueprint.dialogue;
-                        blueprint = TryGettingEntityBlueprint(json);
-
-                        blueprint.dialogue = dialogueRef;
-                    }
+                    TryGettingVendorDefinition(ref blueprint, data.blueprintJSON);
 
                     blueprint.entityName = data.name;
                     Bunker bunker = gObj.AddComponent<Bunker>();
@@ -664,13 +737,7 @@ public class SectorManager : MonoBehaviour
                 }
             case EntityBlueprint.IntendedType.Outpost:
                 {
-                    json = data.blueprintJSON;
-                    if (!string.IsNullOrEmpty(json))
-                    {
-                        var dialogueRef = blueprint.dialogue;
-                        blueprint = TryGettingEntityBlueprint(json);
-                        blueprint.dialogue = dialogueRef;
-                    }
+                    TryGettingVendorDefinition(ref blueprint, data.blueprintJSON);
 
                     blueprint.entityName = data.name;
                     Outpost outpost = gObj.AddComponent<Outpost>();
@@ -904,8 +971,7 @@ public class SectorManager : MonoBehaviour
                     continue;
                 }
 
-                var print = ScriptableObject.CreateInstance<EntityBlueprint>();
-                JsonUtility.FromJsonOverwrite(ch.blueprintJSON, print);
+                var print = TryGettingEntityBlueprint(ch.blueprintJSON);
                 print.intendedType = EntityBlueprint.IntendedType.ShellCore;
                 entity.name = ch.name;
                 entity.faction = ch.faction;
@@ -1020,7 +1086,7 @@ public class SectorManager : MonoBehaviour
         if (Input.GetKey(KeyCode.LeftShift))
         {
 
-            SectorCreatorMouse.SectorData data = new SectorCreatorMouse.SectorData();
+            Sector.SectorData data = new Sector.SectorData();
             data.platformjson = JsonUtility.ToJson(current.platforms);
             data.sectorjson = JsonUtility.ToJson(current);
             current.name = "SavedSector";

@@ -2,7 +2,7 @@
 
 public class Laser : Bullet
 {
-    public static readonly int laserDamage = 60;
+    public static readonly int laserDamage = 45;
     public static readonly float laserPierceFactor = 0.25F;
 
     private int bulletsLeft = 0;
@@ -37,7 +37,7 @@ public class Laser : Bullet
 
     protected override bool FireBullet(Vector3 targetPos)
     {
-        time = Time.time;
+        time = bulletFrequency;
         bulletsLeft = 5;
         this.targetPos = targetPos;
         return true;
@@ -54,10 +54,16 @@ public class Laser : Bullet
 
     protected void Update()
     {
+        time -= Time.deltaTime;
         var target = targetingSystem.GetTarget();
-        if (bulletsLeft > 0 && (Time.time - time > bulletFrequency) && target)
+        if (bulletsLeft > 0 && (time < 0) && target && !Core.IsInvisible && !Core.isAbsorbing)
         {
-            time = Time.time;
+            if (!isEnabled) 
+            {
+                bulletsLeft = 0;
+                return;
+            }
+            time = bulletFrequency;
             bulletsLeft -= 1;
             base.FireBullet(target.position);
         }

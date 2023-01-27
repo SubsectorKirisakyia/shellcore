@@ -1,7 +1,6 @@
 ﻿using UnityEngine;
 using UnityEngine.SceneManagement;
 
-//Temporary main menu, will be redesigned later
 
 public class MainMenu : MonoBehaviour
 {
@@ -28,7 +27,7 @@ public class MainMenu : MonoBehaviour
     {
         if (settings)
         {
-            settings.GetComponentInChildren<GUIWindowScripts>().ToggleActive();
+            settings.GetComponentInChildren<GUIWindowScripts>().ToggleActive(true);
         }
     }
 
@@ -37,17 +36,14 @@ public class MainMenu : MonoBehaviour
         Application.Quit();
     }
 
-    public void OpenCommunityPopup()
-    {
-        if (discordPopup)
-        {
-            discordPopup.GetComponentInChildren<GUIWindowScripts>().ToggleActive();
-        }
-    }
-
     public void OpenDiscord()
     {
         Application.OpenURL("https://discord.gg/TXaenta");
+    }
+
+    public void OpenTwitter()
+    {
+        Application.OpenURL("https://twitter.com/rudderbucky");
     }
 
     public void StartWorldCreator()

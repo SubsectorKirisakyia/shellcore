@@ -53,17 +53,26 @@ public class PartDisplayBase : MonoBehaviour
         }
 
         image.gameObject.SetActive(true);
+        image.rectTransform.localScale = new Vector3(0.5F, 0.5F, 1);
         partName.gameObject.SetActive(true);
         partStats.gameObject.SetActive(true);
         string partID = info.partID;
-        partName.text = partID;
+        if (info.playerGivenName == null || info.playerGivenName == "") 
+        {
+            partName.text = partID;
+        }
+        else
+        {
+            partName.text = info.playerGivenName + " (" + info.partID + ")";
+        }
         var blueprint = ResourceManager.GetAsset<PartBlueprint>(partID);
         float mass = blueprint.mass;
         float health = blueprint.health;
         int value = EntityBlueprint.GetPartValue(info);
         partStats.text = $"PART SHELL: {health / 2}\nPART CORE: {health / 4}\nPART WEIGHT: {mass * Entity.weightMultiplier}\nPART VALUE: \n{value} CREDITS";
         image.sprite = ResourceManager.GetAsset<Sprite>(partID + "_sprite");
-        image.rectTransform.sizeDelta = image.sprite.bounds.size * 50;
+        if (image.sprite)
+            image.rectTransform.sizeDelta = image.sprite.bounds.size * 100;
         image.color = info.shiny ? FactionManager.GetFactionShinyColor(0) : FactionManager.GetFactionColor(0);
     }
 }

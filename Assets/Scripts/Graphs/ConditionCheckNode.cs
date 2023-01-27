@@ -70,7 +70,8 @@ namespace NodeEditorFramework.Standard
             "Parts Obtained",
             "Mission Status",
             "Shards",
-            "Credits"
+            "Credits",
+            "Player's Build Value"
         };
 
         public virtual void InitConnectionKnobs()
@@ -105,7 +106,7 @@ namespace NodeEditorFramework.Standard
             outputFail.DrawKnob();
             GUILayout.EndHorizontal();
 
-            GUILayout.Label("Variable type:");
+            GUILayout.Label("Variable Type:");
             if (GUILayout.Button(variableTypes[variableType]))
             {
                 typePopup = new PopupMenu();
@@ -118,7 +119,7 @@ namespace NodeEditorFramework.Standard
                 typePopup.Show(GUIScaleUtility.GUIToScreenSpace(GUILayoutUtility.GetLastRect().max));
             }
 
-            if (variableType <= 1 || variableType == 5)
+            if (variableType <= 1)
             {
                 GUILayout.Label("Variable Name:");
                 GUILayout.BeginHorizontal();
@@ -141,7 +142,14 @@ namespace NodeEditorFramework.Standard
                     value = RTEditorGUI.IntField(value);
                 }
 
-                GUILayout.Label("Comparison mode:");
+                if (variableType == 5)
+                {
+                    GUILayout.Label("Mission Status:");
+                }
+                else
+                {
+                    GUILayout.Label("Comparison Mode:");
+                }
                 string[] comparisonTexts = variableType == 5 ? missionStatus : comparisonModes;
 
                 if (GUILayout.Button(comparisonTexts[comparisonMode]))
@@ -238,6 +246,9 @@ namespace NodeEditorFramework.Standard
                         break;
                     case 7:
                         variableToCompare = PlayerCore.Instance.GetCredits();
+                        break;
+                    case 8:
+                        variableToCompare = PlayerCore.Instance.GetBuildValue();
                         break;
                 }
 

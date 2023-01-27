@@ -7,6 +7,8 @@ public interface IVendor
     VendingBlueprint GetVendingBlueprint();
     int GetFaction();
     Vector3 GetPosition();
+    Transform GetTransform();
+    bool NeedsSameFaction();
 }
 
 public class VendorUI : MonoBehaviour, IDialogueable, IWindow
@@ -29,6 +31,11 @@ public class VendorUI : MonoBehaviour, IDialogueable, IWindow
     public bool GetActive()
     {
         return UI && UI.activeSelf;
+    }
+
+    public bool IsOpen()
+    {
+        return opened;
     }
 
     public void openUI()
@@ -88,7 +95,10 @@ public class VendorUI : MonoBehaviour, IDialogueable, IWindow
             {
                 buttons[i].GetComponent<Image>().color = new Color(0, 0, 0.4F);
             }
-
+            if (blueprint.items[i].entityBlueprint == null)
+            {
+                blueprint.items[i].entityBlueprint = SectorManager.TryGettingEntityBlueprint(blueprint.items[i].json); 
+            }
             vendorUIButton.blueprint = blueprint.items[i].entityBlueprint;
             vendorUIButton.costText = $"POWER COST: <color=cyan>{blueprint.items[i].cost}</color>";
             vendorUIButton.descriptionText = blueprint.items[i].description;
@@ -98,7 +108,7 @@ public class VendorUI : MonoBehaviour, IDialogueable, IWindow
             vendorUIButton.handler = UI.GetComponentInChildren<SelectionDisplayHandler>();
 
             Image sr = buttons[i].transform.Find("Icon").GetComponent<Image>();
-            sr.sprite = blueprint.items[i].icon;
+            sr.sprite = ResourceManager.GetAsset<Sprite>(blueprint.items[i].icon);
 
             Text[] texts = buttons[i].GetComponentsInChildren<Text>();
             texts[0].text = (i + 1).ToString();
@@ -125,44 +135,49 @@ public class VendorUI : MonoBehaviour, IDialogueable, IWindow
 
     private void Update()
     {
-        if (opened)
+        if (!opened) return;
+        if (vendor == null || vendor.Equals(null))
         {
-            if (vendor == null)
-            {
-                Debug.LogWarning("No vendor!");
-                return;
-            }
+            Debug.Log("No vendor!");
+            return;
+        }
 
-            if (player == null)
-            {
-                Debug.Log("No player set! Using default player.");
-                player = PlayerCore.Instance;
-            }
+        if (player == null)
+        {
+            Debug.Log("No player set! Using default player.");
+            player = PlayerCore.Instance;
+        }
 
-            if (player && vendor.GetFaction() != player.faction)
-            {
-                Debug.Log("Vendor faction changed");
-                CloseUI();
-                return;
-            }
+        if (player && vendor.NeedsSameFaction() && vendor.GetFaction() != player.faction)
+        {
+            Debug.Log("Vendor faction changed");
+            CloseUI();
+            return;
+        }
 
-            if ((vendor.GetPosition() - player.transform.position).sqrMagnitude > range)
-            {
-                Debug.Log("Player moved out of the vendor range");
-                CloseUI();
-                return;
-            }
+        if (player.GetIsDead())
+        {
+            Debug.Log("Player is dead!");
+            CloseUI();
+            return;
+        }
 
-            for (int i = 0; i < blueprint.items.Count; i++)
+        if ((vendor.GetPosition() - player.transform.position).sqrMagnitude > range)
+        {
+            Debug.Log("Player moved out of the vendor range");
+            CloseUI();
+            return;
+        }
+
+        for (int i = 0; i < blueprint.items.Count; i++)
+        {
+            if (player.GetPower() < blueprint.items[i].cost)
             {
-                if (player.GetPower() < blueprint.items[i].cost)
-                {
-                    buttons[i].GetComponent<Image>().color = new Color(0, 0, 0.4F);
-                }
-                else
-                {
-                    buttons[i].GetComponent<Image>().color = Color.white;
-                }
+                buttons[i].GetComponent<Image>().color = new Color(0, 0, 0.4F);
+            }
+            else
+            {
+                buttons[i].GetComponent<Image>().color = Color.white;
             }
         }
     }
@@ -177,7 +192,8 @@ public class VendorUI : MonoBehaviour, IDialogueable, IWindow
 
     public static Entity BuyItem(ShellCore core, int index, IVendor vendor)
     {
-        if (core.unitsCommanding.Count >= core.GetTotalCommandLimit())
+        // TODO: these booleans can be used this way right now but a new IVendor state should be created for if commanding count is needed
+        if (vendor.NeedsSameFaction() && core.unitsCommanding.Count >= core.GetTotalCommandLimit())
         {
             return null;
         }
@@ -185,6 +201,10 @@ public class VendorUI : MonoBehaviour, IDialogueable, IWindow
         GameObject creation = new GameObject();
         creation.transform.position = vendor.GetPosition();
         var blueprint = vendor.GetVendingBlueprint();
+        if (blueprint.items[index].entityBlueprint == null)
+        {
+            blueprint.items[index].entityBlueprint = SectorManager.TryGettingEntityBlueprint(blueprint.items[index].json); 
+        }
         switch (blueprint.items[index].entityBlueprint.intendedType)
         {
             case EntityBlueprint.IntendedType.Turret:
@@ -209,10 +229,25 @@ public class VendorUI : MonoBehaviour, IDialogueable, IWindow
                 tank.blueprint = blueprint.items[index].entityBlueprint;
                 tank.SetOwner(core);
                 break;
+            case EntityBlueprint.IntendedType.Drone:
+                Drone drone = creation.AddComponent<Drone>();
+                drone.blueprint = blueprint.items[index].entityBlueprint;
+                drone.SetOwner(core);
+                break;
+            case EntityBlueprint.IntendedType.ShellCore:
+                ShellCore shellCore = creation.AddComponent<ShellCore>();
+                shellCore.blueprint = blueprint.items[index].entityBlueprint;
+                shellCore.sectorMngr = SectorManager.instance;
+                break;
+            case EntityBlueprint.IntendedType.Tower:
+                Tower tower = creation.AddComponent<Tower>();
+                tower.blueprint = blueprint.items[index].entityBlueprint;
+                tower.sectorMngr = SectorManager.instance;
+                (vendor as TowerBase).SetCurrentTower(tower);
+                break;
             default:
                 break;
         }
-
         creation.GetComponent<Entity>().spawnPoint = vendor.GetPosition();
         creation.GetComponent<Entity>().faction = core.faction;
         creation.name = blueprint.items[index].entityBlueprint.name;
@@ -223,8 +258,8 @@ public class VendorUI : MonoBehaviour, IDialogueable, IWindow
 
     public void onButtonPressed(int index)
     {
-        if (player.GetPower() >= blueprint.items[index].cost && FactionManager.IsAllied(player.faction, vendor.GetFaction())
-                                                             && player.unitsCommanding.Count < player.GetTotalCommandLimit())
+        if (player.GetPower() >= blueprint.items[index].cost && (!vendor.NeedsSameFaction() || FactionManager.IsAllied(player.faction, vendor.GetFaction()))
+                                                             && (!vendor.NeedsSameFaction() || player.unitsCommanding.Count < player.GetTotalCommandLimit()))
         {
             BuyItem(player, index, vendor);
             if (GetActive())
@@ -234,7 +269,7 @@ public class VendorUI : MonoBehaviour, IDialogueable, IWindow
 
             ClearVendor();
         }
-        else if (player && player.GetUnitsCommanding().Count >= player.GetTotalCommandLimit())
+        else if (player && (vendor.NeedsSameFaction() && player.GetUnitsCommanding().Count >= player.GetTotalCommandLimit()))
         {
             player.alerter.showMessage("Unit limit reached!", "clip_alert");
         }

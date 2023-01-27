@@ -3,7 +3,8 @@ using UnityEngine.UI;
 
 public class DisplayPart : MonoBehaviour
 {
-    protected Image image;
+    [HideInInspector]
+    public Image image;
     protected Image shooter;
     public EntityBlueprint.PartInfo info;
     private bool initialized = false;
@@ -53,7 +54,7 @@ public class DisplayPart : MonoBehaviour
         }
         else
         {
-            Debug.LogWarning($"Invalid display part image: {info.partID}");
+            Debug.Log($"Invalid display part image: {info.partID}");
         }
     }
 

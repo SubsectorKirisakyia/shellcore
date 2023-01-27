@@ -161,11 +161,18 @@ public class ShellPart : MonoBehaviour
         detachedTime = Time.time; // update detached time
         hasDetached = true; // has detached now
         gameObject.AddComponent<Rigidbody2D>(); // add a rigidbody (this might become permanent)
+        if (name != "Shell Sprite")
+        {
+            var group = gameObject.AddComponent<UnityEngine.Rendering.SortingGroup>();
+            if (group) group.sortingLayerName = "Air Entities";
+        }
         rigid = GetComponent<Rigidbody2D>();
         rigid.gravityScale = 0; // adjust the rigid body
         rigid.angularDrag = 0;
         float randomDir = Random.Range(0f, 360f);
-        rigid.AddForce(new Vector2(Mathf.Cos(randomDir), Mathf.Sin(randomDir)) * 200f);
+        var vec = (new Vector2(Mathf.Cos(randomDir), Mathf.Sin(randomDir))) + craft.GetComponent<Rigidbody2D>().velocity * 2F;
+        vec = vec.normalized;
+        rigid.AddForce(vec * 200f);
         //rigid.AddTorque(150f * ((Random.Range(0, 2) == 0) ? 1 : -1));
         rotationDirection = (Random.Range(0, 2) == 0);
         gameObject.layer = 9;
@@ -264,7 +271,16 @@ public class ShellPart : MonoBehaviour
     {
         if (shooter)
         {
-            var targ = GetComponent<WeaponAbility>().GetTarget();
+            var weapon = GetComponent<WeaponAbility>();
+            var targ = weapon.GetTarget();
+            if (weapon as Ion) 
+            {
+                float bearing = (weapon as Ion).GetBeamAngle();
+                shooter.transform.eulerAngles = new Vector3(0, 0, bearing - 90);
+                return;
+            }
+
+
             if (targ != null)
             {
                 var targEntity = targ.GetComponent<IDamageable>();

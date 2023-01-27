@@ -117,11 +117,11 @@ public class BattleZoneManager : MonoBehaviour
                 + statBlock.droneSpawns + "\n"
                 + statBlock.droneKills + "\n"
                 + statBlock.turretSpawns + "\n"
-                + statBlock.turretKills + "\n";
+                + statBlock.turretKills + "\n\n";
 
             if (index == 0)
             {
-                str += $"{Mathf.RoundToInt(Time.time - startTime)}s\n{CreditsCollected}\n";
+                str += $"{Mathf.RoundToInt(Time.time - startTime)}s\n\n{CreditsCollected}\n";
             }
 
             strings[index++] = str;
@@ -188,8 +188,10 @@ public class BattleZoneManager : MonoBehaviour
                 }
             }
 
-            if ((livingFactions.Count < 2 || allAllied))
+            if (livingFactions.Count < 2 || allAllied)
             {
+                playing = false;
+                if (!PlayerCore.Instance) return;
                 foreach (Entity playerEntity in targets)
                 {
                     if (playerEntity as PlayerCore)
@@ -214,7 +216,6 @@ public class BattleZoneManager : MonoBehaviour
                 }
 
                 DialogueSystem.ShowBattleResults(livingFactions.Contains(PlayerCore.Instance.faction));
-                playing = false;
             }
         }
     }

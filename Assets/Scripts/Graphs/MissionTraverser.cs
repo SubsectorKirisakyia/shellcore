@@ -9,6 +9,8 @@ public class MissionTraverser : Traverser
 
     public SectorManager.SectorLoadDelegate traverserLimiterDelegate;
 
+    public int taskHash;
+
     public MissionTraverser(QuestCanvas canvas) : base(canvas)
     {
         nodeCanvas = canvas;
@@ -123,13 +125,14 @@ public class MissionTraverser : Traverser
         {
             if (nodeCanvas.nodes[i] is StartTaskNode node && node.taskID == ID)
             {
-                node.StartTask();
+                node.RegisterTask();
             }
         }
     }
 
     public override void SetNode(Node node)
     {
+        Debug.Log($"Mission Canvas {nodeCanvas} now setting node: {node}");
         SetDialogueState(node, NodeEditorGUI.NodeEditorState.Mission);
         base.SetNode(node);
     }

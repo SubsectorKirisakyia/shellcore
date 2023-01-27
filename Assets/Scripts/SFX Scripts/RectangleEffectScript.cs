@@ -4,7 +4,8 @@ using UnityEngine;
 public enum RectangleEffectSkin
 {
     Squares,
-    Crosses
+    Crosses,
+    Triangles
 }
 
 /// <summary>
@@ -31,9 +32,13 @@ public class RectangleEffectScript : MonoBehaviour
         active = act;
     }
 
+    private Rect pixelRect;
+
     // Use this for initialization
     private void Build()
     {
+        
+        pixelRect = Camera.main.pixelRect;
         partSys.Clear();
         timesByParticle.Clear();
         var rd = partSys.GetComponentInChildren<ParticleSystemRenderer>().material =
@@ -124,7 +129,7 @@ public class RectangleEffectScript : MonoBehaviour
     {
         if (active)
         {
-            if (!built)
+            if (!built || Camera.main.pixelRect != pixelRect)
             {
                 Build();
             }

@@ -1,6 +1,5 @@
 ﻿using System.Collections;
 using UnityEngine;
-
 public class SystemLoader : MonoBehaviour
 {
     public ResourceManager resourceManager;
@@ -72,11 +71,6 @@ public class SystemLoader : MonoBehaviour
         if (TaskManager.Instance)
         {
             TaskManager.StartQuests();
-        }
-
-        if (DialogueSystem.Instance && DialogueSystem.GetInitialized())
-        {
-            //DialogueSystem.StartQuests();
         }
     }
 }
