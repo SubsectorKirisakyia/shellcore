@@ -10,12 +10,33 @@ public class BombScript : MonoBehaviour
     private Entity.EntityCategory category;
     private Entity.TerrainType terrain;
     public int faction; // faction of projectile
-    public GameObject missPrefab;
-    public GameObject hitPrefab;
-    public readonly float explosionRadius = 10f;
-    private GameObject explosionCirclePrefab;
+    public static GameObject missPrefab;
+    public static GameObject hitPrefab;
+    public static readonly float explosionRadius = 3f;
+    private static GameObject explosionCirclePrefab;
     private float timeInstantiated;
-    private float fuseTime = 3F;
+    private float fuseTime = 1.5F;
+
+    private static void GetPrefabs()
+    {
+        if (!hitPrefab)
+        {
+            hitPrefab = ResourceManager.GetAsset<GameObject>("bullet_hit_prefab");
+        }
+        if (!explosionCirclePrefab)
+        {
+            explosionCirclePrefab = new GameObject("Explosion Circle");
+            LineRenderer lineRenderer = explosionCirclePrefab.AddComponent<LineRenderer>();
+            lineRenderer.material = ResourceManager.GetAsset<Material>("white_material");
+            var script = explosionCirclePrefab.AddComponent<DrawCircleScript>();
+            script.timeMin = 0F;
+            explosionCirclePrefab.SetActive(false);
+            script.SetStartColor(new Color(0.8F, 1F, 1F, 0.9F));
+            script.color = new Color(0.8F, 1F, 1F, 0.9F);
+        }
+
+    }
+
     // Use this for initialization
     void Start()
     {
@@ -25,18 +46,7 @@ public class BombScript : MonoBehaviour
         ParticleSystem.MainModule mainModule = GetComponentInChildren<ParticleSystem>().main;
         mainModule.startColor = bombColor;
 
-        if (!explosionCirclePrefab)
-        {
-            explosionCirclePrefab = new GameObject("Explosion Circle");
-            explosionCirclePrefab.transform.SetParent(transform, false);
-            LineRenderer lineRenderer = explosionCirclePrefab.AddComponent<LineRenderer>();
-            lineRenderer.material = ResourceManager.GetAsset<Material>("white_material");
-            var script = explosionCirclePrefab.AddComponent<DrawCircleScript>();
-            script.timeMin = 0F;
-            explosionCirclePrefab.SetActive(false);
-            script.SetStartColor(bombColor);
-            script.color = bombColor;
-        }
+        GetPrefabs();
 
         SectorManager.OnSectorLoad += SectorLoaded;
     }
@@ -77,8 +87,9 @@ public class BombScript : MonoBehaviour
     IEnumerator DestroyTimer(float time)
     {
         yield return new WaitForSeconds(time);
-        Instantiate(missPrefab, transform.position, Quaternion.Euler(0, 0,
-            0 * Mathf.Rad2Deg));
+        if (missPrefab)
+            Instantiate(missPrefab, transform.position, Quaternion.Euler(0, 0,
+                0 * Mathf.Rad2Deg));
         Destroy(gameObject);
     }
 
@@ -91,50 +102,45 @@ public class BombScript : MonoBehaviour
 
     private void Update()
     {
-        if (Time.time > timeInstantiated + fuseTime && !fired)
-            foreach (var ent in AIData.entities)
+        if (Time.time <= timeInstantiated + fuseTime || fired) return;
+        foreach (var ent in AIData.entities)
+        {
+            var craft = ent.GetComponent<Entity>(); // check if it has a craft component
+            if (craft == null || craft.GetIsDead()) continue;
+            if (craft as PlayerCore && DevConsoleScript.spectateEnabled) continue;
+            if (FactionManager.IsAllied(faction, craft.GetFaction())) continue;
+            if (craft.GetInvisible()) continue;
+            if (!CheckCategoryCompatibility(craft)) continue;
+            if (owner && (craft.GetTransform() == owner.transform)) continue;
+            if (Vector2.SqrMagnitude(craft.transform.position - transform.position) > explosionRadius * explosionRadius) continue;
+
+            var residue = craft.TakeShellDamage(damage, 0, owner); // deal the damage to the target, no shell penetration
+                                                                    // if the shell is low, damage the part
+            craft.TakeCoreDamage(residue);
+            if (fired) continue;
+            fired = true;
+            ActivationCosmetic(transform.position);
+            if (MasterNetworkAdapter.mode != MasterNetworkAdapter.NetworkMode.Off && !MasterNetworkAdapter.lettingServerDecide)
             {
-
-                var craft = ent.GetComponent<Entity>(); // check if it has a craft component
-                if (craft != null && !craft.GetIsDead()) // check if the component was obtained
-                {
-                    if (craft as PlayerCore && DevConsoleScript.spectateEnabled) 
-                    {
-                        continue;
-                    }
-
-
-                    if (!FactionManager.IsAllied(faction, craft.GetFaction())
-                        && Vector2.SqrMagnitude(craft.transform.position - transform.position) <= explosionRadius * explosionRadius
-                            && CheckCategoryCompatibility(craft)
-                                && (!owner || (craft.GetTransform() != owner.transform)))
-                    {
-                        var residue = craft.TakeShellDamage(damage, 0, owner); // deal the damage to the target, no shell penetration
-                                                                               // if the shell is low, damage the part
-
-                        craft.TakeCoreDamage(residue);
-
-                        if (!fired)
-                        {
-                            AudioManager.PlayClipByID("clip_bombexplosion", transform.position);
-                            GameObject tmp = Instantiate(explosionCirclePrefab, transform); // instantiate circle explosion
-                            tmp.SetActive(true);
-                            tmp.transform.position = transform.position;
-                            tmp.GetComponent<DrawCircleScript>().Initialize();
-                            for (int i = 0; i < 15; i++)
-                            {
-                                Instantiate(hitPrefab, transform.position + new Vector3(Random.Range(-explosionRadius, explosionRadius),
-                                    Random.Range(-explosionRadius, explosionRadius)), Quaternion.identity).transform.localScale *= 2;
-                            }
-                        }
-
-
-                        fired = true;
-
-                        Destroy(gameObject); // bullet has collided with a target, delete immediately
-                    }
-                }
+                MasterNetworkAdapter.instance.BombExplosionClientRpc(transform.position);
             }
+            Destroy(gameObject); // bullet has collided with a target, delete immediately
+        }
+    }
+
+    public static void ActivationCosmetic(Vector3 position)
+    {
+        GetPrefabs();
+        AudioManager.PlayClipByID("clip_bombexplosion", position);
+        GameObject tmp = Instantiate(explosionCirclePrefab, position, Quaternion.identity); // instantiate circle explosion
+        tmp.SetActive(true);
+        tmp.transform.position = position;
+        tmp.GetComponent<DrawCircleScript>().Initialize();
+        for (int i = 0; i < 15; i++)
+        {
+            Instantiate(hitPrefab, position + new Vector3(Random.Range(-explosionRadius, explosionRadius),
+                Random.Range(-explosionRadius, explosionRadius)), Quaternion.identity).transform.localScale *= 2;
+        }
     }
 
     void SectorLoaded(string sector)

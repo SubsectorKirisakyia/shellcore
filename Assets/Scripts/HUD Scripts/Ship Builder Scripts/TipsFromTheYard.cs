@@ -22,16 +22,24 @@ public class TipsFromTheYard : MonoBehaviour
         tipsList.Add("Be glad you don't float in one place all day doing surgery on ShellCores!");
         tipsList.Add("Make sure your ship can supply the required energy to handle all your abilities!");
         tipsList.Add("Slow ships are boring! Try adding some speed or removing some parts if your ship is too slow!");
-        tipsList.Add("Shift-click a preset button to clear it!");
         tipsList.Add("The hitboxes of parts in the ship builder are pretty much just rectangles! Use this to create some cool designs!");
         tipsList.Add("If a part is not connected in a direct line of parts to the shell, it will detach, or 'domino'. Make sure your ship design prevents this from happening!");
         tipsList.Add("You can hit 'escape' to close this window too! That way you can cycle through my infinite wisdom faster!");
         tipsList.Add("You can create custom ShellCores in the World Creator using the JSON you get from this ship builder! Share your JSON with friends!");
         tipsList.Add("If you double click the Status Menu map it switches from a draggable map to a minimap-style scroll (and vice versa)!");
         tipsList.Add("You can shift-click part buttons to instantly buy/sell them!");
-        tipsList.Add("You can press tab to cycle through your selected targets!");
+        tipsList.Add("You can press tab to cycle through your selected targets! Use this to move several turrets at once.");
         tipsList.Add("When not receiving background dialogue you can press 'enter' to view all the background dialogue you received before!");
         tipsList.Add("Double-click the grid to reset the center to your core!");
+        tipsList.Add("You can zoom in and out in this Ship Builder by scrolling up/down!");
+        tipsList.Add("Some weapons do more damage to certain enemies! Read their tooltips to figure out which ones!");
+        tipsList.Add("Some parts have ability tiers greater than their part size!");
+        tipsList.Add("A multiplayer mode exists! Click the button in the main menu!");
+        tipsList.Add("Concentrate and ask again!");
+        tipsList.Add("You might be able to find shard rocks while roaming around! Shards allow you to increase your ability limits!");
+        tipsList.Add("Saving power is important! You can buy several siege turrets in one go to devastate stations.");
+        tipsList.Add("You can press 'Control' and 'Tab' at the same time to select all your owned units!");
+        tipsList.Add("You can left click and press 'Shift' at the same time to clear your secondary targets without ordering them!");
         colors = new Color[] {Color.green, Color.cyan, Color.magenta, Color.yellow, Color.blue};
     }
 

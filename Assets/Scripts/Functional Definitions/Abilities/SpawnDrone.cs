@@ -30,8 +30,7 @@ public class SpawnDrone : ActiveAbility
         activeDuration = spawnData.delay + 0.1f;
         energyCost = spawnData.energyCost;
         // create blueprint from string json in spawn data
-        blueprint = ScriptableObject.CreateInstance<EntityBlueprint>();
-        JsonUtility.FromJsonOverwrite(spawnData.drone, blueprint);
+        blueprint = SectorManager.TryGettingEntityBlueprint(spawnData.drone);
     }
 
     protected override void Awake()
@@ -83,8 +82,10 @@ public class SpawnDrone : ActiveAbility
         drone.transform.position = part.transform.position;
         drone.spawnPoint = part.transform.position;
         drone.type = spawnData.type;
-        drone.Init();
+        if (MasterNetworkAdapter.mode != MasterNetworkAdapter.NetworkMode.Off)
+            drone.blueprintString = JsonUtility.ToJson(blueprint);
         drone.SetOwner(craft);
+        drone.Init();
         craft.GetSectorManager().InsertPersistentObject(drone.blueprint.name, go);
         if (SectorManager.instance && SectorManager.instance.GetComponentInChildren<BattleZoneManager>())
         {
@@ -116,18 +117,29 @@ public class SpawnDrone : ActiveAbility
         }
     }
 
+    protected override bool ExtraCriteriaToActivate()
+    {
+        return craft != null && !craft.Equals(null) && craft.GetUnitsCommanding().Count < craft.GetTotalCommandLimit();
+    }
+
+    protected override void ExtraCriteriaFailureEvent()
+    {
+        if (craft is PlayerCore player)
+            player.alerter.showMessage("Unit limit reached!", "clip_alert");
+    }
+
     /// <summary>
     /// Starts the spawning countdown
     /// </summary>
     public override void Activate()
     {
-        if (craft != null && craft.GetUnitsCommanding().Count < craft.GetTotalCommandLimit())
+        if (craft != null && ExtraCriteriaToActivate())
         {
             base.Activate();
         }
-        else if (craft is PlayerCore player && craft.GetUnitsCommanding().Count >= craft.GetTotalCommandLimit())
+        else if (!ExtraCriteriaToActivate())
         {
-            player.alerter.showMessage("Unit limit reached!", "clip_alert");
+            ExtraCriteriaFailureEvent();
         }
     }
 }

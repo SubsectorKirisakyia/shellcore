@@ -1,19 +1,7 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
-
-
-
-public interface IBuilderInterface
-{
-    BuilderMode GetMode();
-    void DispatchPart(ShipBuilderPart part, ShipBuilder.TransferMode mode, bool updateChain = true);
-    void UpdateChain();
-    EntityBlueprint.PartInfo? GetButtonPartCursorIsOn();
-    void SetSearcherString(string text);
-    bool CheckPartIntersectsWithShell(ShipBuilderPart shipPart);
-    string GetCurrentJSON();
-}
 
 public class ShipBuilderCursorScript : MonoBehaviour, IShipStatsDatabase
 {
@@ -25,9 +13,9 @@ public class ShipBuilderCursorScript : MonoBehaviour, IShipStatsDatabase
     ShipBuilderPart currentPart;
 
     ShipBuilderPart lastPart;
-    public IBuilderInterface builder;
+    public ShipBuilder builder;
     public InputField searchField;
-    public InputField jsonField;
+    public GameObject jsonField;
     bool flipped;
     public AbilityHandler handler;
     public PlayerCore player;
@@ -67,7 +55,7 @@ public class ShipBuilderCursorScript : MonoBehaviour, IShipStatsDatabase
         cursorMode = mode;
     }
 
-    public void SetBuilder(IBuilderInterface builder)
+    public void SetBuilder(ShipBuilder builder)
     {
         this.builder = builder;
     }
@@ -174,7 +162,7 @@ public class ShipBuilderCursorScript : MonoBehaviour, IShipStatsDatabase
                 dispatch = true;
                 mode = ShipBuilder.TransferMode.Return;
             }
-            else if (builder.CheckPartIntersectsWithShell(currentPart) && currentPart.GetLastValidPos() == null)
+            else if (ShipBuilder.CheckPartIntersectsWithShell(currentPart, builder.GetMode()) && currentPart.GetLastValidPos() == null)
             {
                 dispatch = true;
                 mode = ShipBuilder.TransferMode.Return;
@@ -218,13 +206,31 @@ public class ShipBuilderCursorScript : MonoBehaviour, IShipStatsDatabase
         symmetryLastPart = symmetryCurrentPart;
         currentPart = null;
         symmetryCurrentPart = null;
-        if (lastPart.isInChain && lastPart.validPos)
+        var validPlacement = (lastPart.info.isInChain && lastPart.info.validPos) &&
+        (!symmetryLastPart || (symmetryLastPart.info.isInChain && symmetryLastPart.info.validPos));
+        var shouldSnapback = Input.GetKey(KeyCode.LeftShift) 
+        || ShipBuilder.CheckPartIntersectsWithShell(lastPart, builder.GetMode())
+        || (symmetryLastPart && ShipBuilder.CheckPartIntersectsWithShell(symmetryLastPart, builder.GetMode()));
+
+
+        if (validPlacement)
         {
             lastPart.SetLastValidPos(lastPart.info.location);
         }
-        else if (Input.GetKey(KeyCode.LeftShift) || builder.CheckPartIntersectsWithShell(lastPart))
+        else if (shouldSnapback)
         {
             lastPart.Snapback();
+        }
+
+
+        if (!symmetryLastPart) return;
+        if (validPlacement)
+        {
+            symmetryLastPart.SetLastValidPos(symmetryLastPart.info.location);
+        }
+        else if (shouldSnapback)
+        {
+            symmetryLastPart.Snapback();
         }
     }
 
@@ -251,7 +257,13 @@ public class ShipBuilderCursorScript : MonoBehaviour, IShipStatsDatabase
             }
         }
 
-        currentAbilities.Insert(0, gameObject.AddComponent<MainBullet>());
+
+        if (GetBlueprint())
+        {
+            var mb = gameObject.AddComponent<MainBullet>();
+            mb.SetTier(Mathf.Min(3, 1 + CoreUpgraderScript.GetCoreTier(GetBlueprint().coreShellSpriteID)));
+            currentAbilities.Insert(0, mb);
+        }
         if (handler)
         {
             handler.Deinitialize();
@@ -417,7 +429,7 @@ public class ShipBuilderCursorScript : MonoBehaviour, IShipStatsDatabase
 
         int baseMoveSize = cursorMode == BuilderMode.Yard ? 4 : 5;
 
-        if (Input.GetKeyDown(KeyCode.C) && (!searchField.isFocused && !jsonField.isFocused && !WCWorldIO.active))
+        if (Input.GetKeyDown(KeyCode.C) && (!searchField.isFocused && !jsonField.activeSelf && !WCWorldIO.active))
         {
             if (builder as ShipBuilder == null || !(builder as ShipBuilder).Equals(null))
             {
@@ -440,6 +452,11 @@ public class ShipBuilderCursorScript : MonoBehaviour, IShipStatsDatabase
         GetComponent<RectTransform>().anchoredPosition = new Vector2(Mathf.Round(oldPos.x / 10) * 10, Mathf.Round(oldPos.y / 10) * 10);
         // round to nearest 0.1
         // TODO: Make this stuff less messy. Regardless, consistency achieved!
+        if (rotateMode && !Input.GetMouseButton(0))
+        {
+            rotateMode = false;
+        }
+
         if (rotateMode)
         {
             RotateLastPart();
@@ -471,7 +488,7 @@ public class ShipBuilderCursorScript : MonoBehaviour, IShipStatsDatabase
                 symmetryCurrentPart.info.location = GetSymmetrizedVector(currentPart.info.location, symmetryMode);
             }
 
-            if (Input.GetMouseButtonUp(0))
+            if (!Input.GetMouseButton(0))
             {
                 PlaceCurrentPart();
             }
@@ -707,5 +724,11 @@ public class ShipBuilderCursorScript : MonoBehaviour, IShipStatsDatabase
     public int GetBuildCost()
     {
         return buildCost;
+    }
+
+    public EntityBlueprint GetBlueprint()
+    {
+        if (builder is ShipBuilder sb) return sb.GetBlueprint();
+        return null;
     }
 }

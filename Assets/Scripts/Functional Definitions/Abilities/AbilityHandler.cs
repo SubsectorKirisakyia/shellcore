@@ -38,6 +38,7 @@ public class AbilityHandler : MonoBehaviour
 
     public void SetCurrentVisible(AbilityTypes type)
     {
+        if (DevConsoleScript.spectateEnabled) return;
         if (currentVisibles != type)
         {
             currentVisibles = type;
@@ -60,6 +61,11 @@ public class AbilityHandler : MonoBehaviour
     {
         instance = this;
         core = player;
+        if (!core || !player.gameObject.activeSelf)
+        {
+            gameObject.SetActive(false);
+            return;
+        }
         if (displayAbilities == null)
         {
             abilities = core.GetAbilities(); // Get the core's ability array

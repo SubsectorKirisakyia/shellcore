@@ -11,19 +11,24 @@ public class Tank : GroundCraft, IOwnable
 
     public bool IsInRange = false;
 
-    WeaponAbility weapon;
+    WeaponAbility[] weapons;
 
-    WeaponAbility Weapon
+    WeaponAbility[] Weapons
     {
         get
         {
-            if (weapon == null)
+            if (weapons == null)
             {
-                weapon = GetComponentInChildren<WeaponAbility>();
+                weapons = GetComponentsInChildren<WeaponAbility>();
             }
 
-            return weapon;
+            return weapons;
         }
+    }
+
+    public IOwner GetOwner()
+    {
+        return owner;
     }
 
     public override bool isImmobile
@@ -86,9 +91,13 @@ public class Tank : GroundCraft, IOwnable
         if (isOnGround && !isDead)
         {
             TargetManager.Enqueue(targeter);
-            if (!isDead && Weapon && !draggable.dragging)
+            if (!isDead && !draggable.dragging)
             {
-                Weapon.Tick();
+                foreach (var weapon in Weapons)
+                {
+                    if (weapon)
+                        weapon.Tick();
+                }
             }
 
             drive();
@@ -107,11 +116,12 @@ public class Tank : GroundCraft, IOwnable
             return;
         }
 
-        if (!Weapon)
+        if (Weapons.Length == 0)
         {
             return;
         }
 
+        if (MasterNetworkAdapter.mode == MasterNetworkAdapter.NetworkMode.Client) return;
         // Find valid ground targets
         List<Entity> targets = new List<Entity>(AIData.entities);
 
@@ -121,7 +131,7 @@ public class Tank : GroundCraft, IOwnable
                 targets[i].IsInvisible ||
                 targets[i] == this ||
                 FactionManager.IsAllied(faction, targets[i].faction) ||
-                !Weapon.CheckCategoryCompatibility(targets[i]))
+                !Weapons[0].CheckCategoryCompatibility(targets[i]))
             {
                 targets.RemoveAt(i);
                 i--;
@@ -129,11 +139,21 @@ public class Tank : GroundCraft, IOwnable
         }
 
         // Find a path to the closest one
-        if (targets.Count > 0)
-        {
-            Vector2[] newPath = LandPlatformGenerator.pathfind(transform.position, targets.ToArray(), weapon.GetRange());
+        if (targets.Count == 0) return;
+        Vector2[] newPath = LandPlatformGenerator.pathfind(transform.position, targets.ToArray(), Weapons[0].GetRange());
 
-            if (!HasPath)
+        if (!HasPath)
+        {
+            path = newPath;
+            HasPath = (path != null && path.Length > 0);
+            if (HasPath)
+            {
+                index = path.Length - 1;
+            }
+        }
+        else if (newPath != null && path != null && newPath.Length > 0 && path.Length > 0)
+        {
+            if (newPath[0] != path[0])
             {
                 path = newPath;
                 HasPath = (path != null && path.Length > 0);
@@ -142,26 +162,14 @@ public class Tank : GroundCraft, IOwnable
                     index = path.Length - 1;
                 }
             }
-            else if (newPath != null && path != null && newPath.Length > 0 && path.Length > 0)
+        }
+        else
+        {
+            path = newPath;
+            HasPath = (path != null && path.Length > 0);
+            if (HasPath)
             {
-                if (newPath[0] != path[0])
-                {
-                    path = newPath;
-                    HasPath = (path != null && path.Length > 0);
-                    if (HasPath)
-                    {
-                        index = path.Length - 1;
-                    }
-                }
-            }
-            else
-            {
-                path = newPath;
-                HasPath = (path != null && path.Length > 0);
-                if (HasPath)
-                {
-                    index = path.Length - 1;
-                }
+                index = path.Length - 1;
             }
         }
     }
@@ -208,10 +216,10 @@ public class Tank : GroundCraft, IOwnable
             }
 
             IsInRange = false;
-            var target = weapon.GetTarget();
+            var target = Weapons[0].GetTarget();
             if (target != null)
             {
-                float r2 = weapon.GetRange();
+                float r2 = Weapons[0].GetRange();
                 r2 = r2 * r2;
                 IsInRange = (target.transform.position - transform.position).sqrMagnitude < r2;
             }

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -25,13 +26,15 @@ public class DevConsoleScript : MonoBehaviour
 
     Queue<string> textToAdd = new Queue<string>();
 
-    static DevConsoleScript Instance;
+    public static DevConsoleScript Instance;
 
     void OnEnable()
     {
         Application.logMessageReceived += HandleLog;
         godModeEnabled = false;
+        MapMakerScript.DisableMapCheat();
         spectateEnabled = false;
+        PartIndexScript.partsObtainedCheat = false;
         Instance = this;
         componentEnabled = false;
     }
@@ -54,6 +57,9 @@ public class DevConsoleScript : MonoBehaviour
 
     void HandleLog(string logString, string stackTrace, LogType type)
     {
+        if (stackTrace.Contains("GetNetworkBehaviourAtOrderIndex")) return;
+        if (stackTrace.Contains("Unhandled RPC")) return;
+        if (stackTrace.Contains("SynchronizeNetworkBehaviours")) return;
         string startingColor = "<color=white>";
         if ((type == LogType.Log || type == LogType.Assert) && !fullLog)
         {
@@ -97,18 +103,17 @@ public class DevConsoleScript : MonoBehaviour
 
     public static void Print(string logString)
     {
-        Instance.textToAdd.Enqueue("\n <color=white>{logString}</color>");
+        Instance.textToAdd.Enqueue($"\n <color=white>{logString}</color>");
     }
 
-    private void GodPowers()
+    public void GodPowers(ShellCore ent)
     {
-        var player = PlayerCore.Instance;
-        player.SetMaxHealth(new float[] { 99999, 99999, 99999 }, true);
-        player.SetRegens(new float[] { 99999, 99999, 99999 });
-        player.speed = 9999f;
-        player.CalculatePhysicsConstants();
-        player.DamageBoostStacks += 1000;
-        player.AddPower(10000);
+        ent.SetMaxHealth(new float[] { 99999, 99999, 99999 }, true);
+        ent.SetRegens(new float[] { 99999, 99999, 99999 });
+        ent.speed = 9999f;
+        ent.CalculatePhysicsConstants();
+        ent.DamageBoostStacks += 1000;
+        ent.AddPower(10000);
         godModeEnabled = true;
         MapMakerScript.EnableMapCheat();
     }
@@ -118,16 +123,16 @@ public class DevConsoleScript : MonoBehaviour
         inputField.text = "";
         inputField.ActivateInputField();
 
-        if (UnityEngine.SceneManagement.SceneManager.GetActiveScene().name == "SampleScene")
+        if (UnityEngine.SceneManagement.SceneManager.GetActiveScene().name == "SampleScene")//&& MasterNetworkAdapter.mode == MasterNetworkAdapter.NetworkMode.Off)
         {
             if (command.Equals("poor", StringComparison.CurrentCultureIgnoreCase))
             {
-                GodPowers();
+                GodPowers(PlayerCore.Instance);
                 textBox.text += "\n<color=lime>Have you tried being born into wealth?</color>";
             }
             else if (command.Equals("I am God", StringComparison.CurrentCultureIgnoreCase))
             {
-                GodPowers();
+                GodPowers(PlayerCore.Instance);
                 var player = PlayerCore.Instance;
                 player.AddCredits(999999);
                 textBox.text += "\n<color=lime>I am noob.</color>";
@@ -139,12 +144,20 @@ public class DevConsoleScript : MonoBehaviour
                 player.SetRegens(new float[] { 99999, 99999, 99999 });
                 textBox.text += "\n<color=lime>Immortality is an illusion, enjoy it while it lasts.</color>";
             }
-            else if (command.Equals("Skynet will rise", StringComparison.CurrentCultureIgnoreCase))
+            else if (command.StartsWith("network ", StringComparison.CurrentCultureIgnoreCase))
             {
-                SectorManager.instance.Clear();
-                SectorManager.instance.LoadSectorFile(System.IO.Path.Combine(Application.streamingAssetsPath, "Sectors/AI-Test"));
+                switch(command.Substring(8).Trim())
+                {
+                    case "client":
+                        MasterNetworkAdapter.StartClient();
+                        textBox.text += "\n<color=lime>Running as client</color>";
+                        break;
+                    case "server":
+                        MasterNetworkAdapter.StartServer();
+                        textBox.text += "\n<color=lime>Running as server</color>";
+                        break;
+                }
                 PlayerCore.Instance.Warp(Vector3.zero);
-                textBox.text += "\n<color=lime>I, for one, welcome our new robotic overlords.</color>";
             }
             else if (command.StartsWith("Add power ", StringComparison.CurrentCultureIgnoreCase))
             {
@@ -164,21 +177,24 @@ public class DevConsoleScript : MonoBehaviour
             {
                 int number = int.Parse(command.Substring(8).Trim());
                 PlayerCore.Instance.reputation += number;
+                textBox.text += "\n<color=lime>Now you are worth more.</color>";
             }
             else if (command.StartsWith("Add shards ", StringComparison.CurrentCultureIgnoreCase))
             {
                 int number = int.Parse(command.Substring(11).Trim());
-                PlayerCore.Instance.shards += number;
+                PlayerCore.Instance.cursave.shards += number;
+                textBox.text += "\n<color=lime>I forgot about the shards.</color>";
             }
             else if (command.StartsWith("Add money ", StringComparison.CurrentCultureIgnoreCase))
             {
                 int number = int.Parse(command.Substring(10).Trim());
                 PlayerCore.Instance.AddCredits(number);
+                textBox.text += "\n<color=lime>Money, Money, Money.</color>";
             }
             else if (command.Equals("Full log", StringComparison.CurrentCultureIgnoreCase))
             {
                 fullLog = true;
-                textBox.text += "\n<color=lime>I see all, I know all</color>";
+                textBox.text += "\n<color=lime>I see all, I know all.</color>";
             }
             else if (command.Equals("Commit sudoku", StringComparison.CurrentCultureIgnoreCase))
             {
@@ -216,11 +232,6 @@ public class DevConsoleScript : MonoBehaviour
                 }
 
                 spectateEnabled = true;
-                Collider2D[] colliders = player.GetComponentsInChildren<Collider2D>(true);
-                for (int i = 0; i < colliders.Length; i++)
-                {
-                    colliders[i].enabled = false;
-                }
 
                 player.GetComponent<TractorBeam>().enabled = false;
                 player.GetAbilityHandler().Deinitialize();
@@ -232,6 +243,10 @@ public class DevConsoleScript : MonoBehaviour
             {
                 textBox.enabled = image.enabled = !image.enabled;
                 inputField.gameObject.SetActive(image.enabled);
+            }
+            else if (command.Equals("clear", StringComparison.CurrentCultureIgnoreCase))
+            {
+                textBox.text = "";
             }
             else if (command.Equals("I am Ormanus", StringComparison.CurrentCultureIgnoreCase))
             {
@@ -319,7 +334,7 @@ public class DevConsoleScript : MonoBehaviour
                     {
                         info.partID = name;
                         info.abilityID = i;
-                        if ((info.abilityID >= 14 && info.abilityID <= 16) || info.abilityID == 3 || info.abilityID == 39)
+                        if ((info.abilityID >= 14 && info.abilityID <= 16) || info.abilityID == 3 || info.abilityID == 39 || info.abilityID <= 42)
                         {
                             info.abilityID = 0;
                         }
@@ -330,7 +345,7 @@ public class DevConsoleScript : MonoBehaviour
                             info.secondaryData = JsonUtility.ToJson(data);
                         }
 
-                        if (info.abilityID == 0 || info.abilityID == 10 || info.abilityID == 21 || info.abilityID == 24 || info.abilityID == 27 || info.abilityID == 28 || info.abilityID == 29 || info.abilityID == 41)
+                        if (info.abilityID == 0 || info.abilityID == 10 || info.abilityID == 21 || info.abilityID == 24 || info.abilityID == 27 || info.abilityID == 28 || info.abilityID == 29)
                         {
                             info.tier = 0;
                         }
@@ -349,11 +364,15 @@ public class DevConsoleScript : MonoBehaviour
             }
             else if (command.Equals("Win siege", StringComparison.CurrentCultureIgnoreCase))
             {
-                NodeEditorFramework.Standard.WinSiegeCondition.OnSiegeWin.Invoke(SectorManager.instance.current.sectorName);
+                if (NodeEditorFramework.Standard.WinSiegeCondition.OnSiegeWin != null)
+                    NodeEditorFramework.Standard.WinSiegeCondition.OnSiegeWin.Invoke(SectorManager.instance.current.sectorName);
+                textBox.text += "\n<color=lime>Should have tested it...</color>";
             }
             else if (command.Equals("Win bz", StringComparison.CurrentCultureIgnoreCase))
             {
-                NodeEditorFramework.Standard.WinBattleCondition.OnBattleWin.Invoke(SectorManager.instance.current.sectorName);
+                if (NodeEditorFramework.Standard.WinBattleCondition.OnBattleWin != null)
+                    NodeEditorFramework.Standard.WinBattleCondition.OnBattleWin.Invoke(SectorManager.instance.current.sectorName);
+                textBox.text += "\n<color=lime>The war is over.</color>";
             }
             else if (command.Equals("No limits", StringComparison.CurrentCultureIgnoreCase))
             {
@@ -379,6 +398,29 @@ public class DevConsoleScript : MonoBehaviour
                     textBox.text += "\n<color=lime>Surely a really bad bug went off and you don't just want to skip content we worked so hard to make, right?</color>";
                 }
             }
+            else if (command.StartsWith("loadbp ", StringComparison.CurrentCultureIgnoreCase))
+            {
+                string blueprint = command.Substring(7).Trim();
+                ToggleActive();
+                MasterNetworkAdapter.instance.CreatePlayerServerRpc(MasterNetworkAdapter.playerName, blueprint, 0);
+            }
+            else if (command.StartsWith("test ", StringComparison.CurrentCultureIgnoreCase))
+            {
+                string blueprint = command.Substring(5).Trim();
+                switch (blueprint)
+                {
+                    case "clientnuke":
+                        // MasterNetworkAdapter.instance.ClientNukeServerRpc();
+                        break;
+                    case "god":
+                        PlayerCore.Instance.networkAdapter.GodModeServerRpc();
+                        break;
+
+                    case "power":
+                        PlayerCore.Instance.networkAdapter.AddPowerServerRpc();
+                        break;
+                }
+            }
         }
         else if (UnityEngine.SceneManagement.SceneManager.GetActiveScene().name == "MainMenu")
         {
@@ -401,7 +443,12 @@ public class DevConsoleScript : MonoBehaviour
         }
     }
 
-    void ToggleActive()
+    public void SetActive()
+    {
+        if (!textBox.enabled) ToggleActive();
+    }
+
+    public void ToggleActive()
     {
         textBox.enabled = image.enabled = !image.enabled;
         componentEnabled = image.enabled;

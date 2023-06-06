@@ -1,4 +1,5 @@
-﻿using UnityEngine;
+﻿using Unity.Netcode;
+using UnityEngine;
 
 // Tractor beam wrapper class.
 public class TractorBeam : MonoBehaviour
@@ -12,12 +13,16 @@ public class TractorBeam : MonoBehaviour
     Transform coreGlow;
     Transform targetGlow;
     public Entity owner;
+    [SerializeField]
     Draggable target;
     private float energyPickupTimer = 10.0f; // Energy pickup timer
     protected float energyPickupSpeed = 61.0f;
     public bool initialized;
     private bool energyEnabled = true;
     private GameObject tractorBeamPrefab;
+    private ulong finalTractorForFrame;
+    private bool serverTractorDirty = true;
+    private GameObject auxillaryParticleSystem;
 
     public void SetEnergyEnabled(bool val)
     {
@@ -68,6 +73,9 @@ public class TractorBeam : MonoBehaviour
         lineRenderer.sortingLayerName = "Projectiles";
         childObject.name = "TractorBeam";
         tractorBeamPrefab = childObject;
+        auxillaryParticleSystem = Instantiate(ResourceManager.GetAsset<GameObject>("tractor_specialfx"), childObject.transform);
+        auxillaryParticleSystem.SetActive(false);
+        lineRenderer.positionCount = 0;
         initialized = true;
     }
 
@@ -76,17 +84,30 @@ public class TractorBeam : MonoBehaviour
         if (initialized)
         {
             TractorBeamUpdate();
+            if (!queueServerCall || 
+                (MasterNetworkAdapter.mode == MasterNetworkAdapter.NetworkMode.Client || MasterNetworkAdapter.mode == MasterNetworkAdapter.NetworkMode.Off)) return;
+            if (target && EntityNetworkAdapter.GetNetworkId(target.transform) != ulong.MaxValue)
+            {
+                owner.networkAdapter.SetTractorID(EntityNetworkAdapter.GetNetworkId(target.transform));
+                queueServerCall = false;
+            }
+            else 
+            {
+                owner.networkAdapter.SetTractorID(null);
+                queueServerCall = false;
+            }
         }
     }
 
     protected void FixedUpdate()
     {
+        if (MasterNetworkAdapter.mode == MasterNetworkAdapter.NetworkMode.Client) return;
         if (!IsValidDraggableTarget(target))
         {
             SetTractorTarget(null); // Make sure that you are still allowed to tractor the target
         }
 
-        if (target && !owner.GetIsDead()) // Update tractor beam physics
+        if (target && !owner.GetIsDead() && MasterNetworkAdapter.mode != MasterNetworkAdapter.NetworkMode.Client) // Update tractor beam physics
         {
             Rigidbody2D rigidbody = target.GetComponent<Rigidbody2D>();
             if (rigidbody)
@@ -103,7 +124,7 @@ public class TractorBeam : MonoBehaviour
                     {
                         rigidbody.position = transform.position;
                         rigidbody.velocity = Vector2.zero;
-                        target = null;
+                        SetTractorTarget(null);
                     }
                     else
                     {
@@ -112,7 +133,7 @@ public class TractorBeam : MonoBehaviour
 
                     if (owner.IsInvisible)
                     {
-                        target = null;
+                        SetTractorTarget(null);
                     }
                 }
                 else if (dist > 2f)
@@ -133,6 +154,14 @@ public class TractorBeam : MonoBehaviour
 
     private static float tractorStrength = 1.5F;
 
+    protected void LateUpdate()
+    {
+        if (coreGlow)
+            coreGlow.transform.position = transform.position;
+        if (targetGlow && target)
+            targetGlow.transform.position = target.transform.position;
+    }
+
     protected void TractorBeamUpdate()
     {
         lineRenderer.material.color = owner.tractorSwitched ? new Color32(255, 32, 255, 128) : new Color32(88, 239, 255, 128);
@@ -147,6 +176,7 @@ public class TractorBeam : MonoBehaviour
 
             for (int i = 0; i < energies.Length; i++)
             {
+                if (!energies[i]) continue;
                 float sqrD = Vector3.SqrMagnitude(transform.position - energies[i].transform.position);
                 if ((closest == null || sqrD < closestD) && !energies[i].GetComponent<Draggable>().dragging)
                 {
@@ -155,7 +185,7 @@ public class TractorBeam : MonoBehaviour
                 }
             }
 
-            if (closest && closestD < energyPickupRangeSquared && target == null)
+            if (closest && closestD < energyPickupRangeSquared && target == null && !closest.gameObject.GetComponent<Draggable>().dragging && !MasterNetworkAdapter.lettingServerDecide)
             {
                 SetTractorTarget(closest.gameObject.GetComponent<Draggable>());
             }
@@ -165,7 +195,7 @@ public class TractorBeam : MonoBehaviour
 
         if ((target && !owner.GetIsDead() && (!target.GetComponent<Entity>() || !target.GetComponent<Entity>().GetIsDead()))) // Update tractor beam graphics
         {
-            if (!forcedTarget && (target.transform.position - transform.position).sqrMagnitude > maxBreakRangeSquared && !(owner as Yard))
+            if (!forcedTarget && (target.transform.position - transform.position).sqrMagnitude > maxBreakRangeSquared && !(owner as Yard) && MasterNetworkAdapter.mode != MasterNetworkAdapter.NetworkMode.Client)
             {
                 SetTractorTarget(null); // break tractor if too far away
             }
@@ -177,9 +207,12 @@ public class TractorBeam : MonoBehaviour
 
                 coreGlow.gameObject.SetActive(true);
                 targetGlow.gameObject.SetActive(true);
-
-                coreGlow.transform.position = transform.position;
-                targetGlow.transform.position = target.transform.position;
+                var x = auxillaryParticleSystem.GetComponentInChildren<ParticleSystem>().main;
+                x.startColor = new ParticleSystem.MinMaxGradient(owner.tractorSwitched ? new Color32(255, 32, 255, 128) : new Color32(88, 239, 255, 128));
+                auxillaryParticleSystem.SetActive(true);
+                auxillaryParticleSystem.transform.position = Vector3.Lerp(transform.position, target.transform.position, 0.5F);
+                auxillaryParticleSystem.transform.localScale = new Vector3((target.transform.position - transform.position).magnitude/0.2F, 1F, 1);
+                auxillaryParticleSystem.transform.rotation = Quaternion.Euler(new Vector3(0, 0, 360 - Vector2.SignedAngle(target.transform.position - transform.position, Vector2.right)));// = new Vector3(0, 0, 0);
             }
         }
         else
@@ -188,37 +221,71 @@ public class TractorBeam : MonoBehaviour
             lineRenderer.positionCount = 0;
             coreGlow.gameObject.SetActive(false);
             targetGlow.gameObject.SetActive(false);
+            auxillaryParticleSystem.SetActive(false);
+        }
+
+        if (serverTractorDirty && owner.networkAdapter)
+        {
+            serverTractorDirty = false;
+            owner.networkAdapter.UpdateTractorClientRpc(finalTractorForFrame, finalTractorForFrame == ulong.MaxValue);
         }
     }
 
-    public void SetTractorTarget(Draggable newTarget)
+    public void SetIdToTractor(ulong id)
     {
-        //if (target != null && newTarget == null && owner.faction != 0)
-        //{
-        //    Debug.Log("AI Dropped something!");
-        //}
+        finalTractorForFrame = id;
+        serverTractorDirty = true;
+    }
+
+    private bool queueServerCall = false;
+    public void SetTractorTarget(Draggable newTarget, bool fromClient = false, bool fromServer = false)
+    {
+        if (target == newTarget) return;
+        if (newTarget && owner.GetIsDead()) return;
         var targetComp = target != null && target ? target?.GetComponent<ShellPart>() : null;
         if (!newTarget && target && targetComp && !AIData.strayParts.Contains(targetComp))
         {
             AIData.strayParts.Add(targetComp);
         }
 
-        if (IsValidDraggableTarget(newTarget))
+        if (IsValidDraggableTarget(newTarget) || fromServer)
         {
+            if (MasterNetworkAdapter.mode == MasterNetworkAdapter.NetworkMode.Client && owner as PlayerCore && !fromServer)
+            {
+                owner.networkAdapter.RequestTractorUpdateServerRpc(EntityNetworkAdapter.GetNetworkId(newTarget ? newTarget.transform : null), !EntityNetworkAdapter.TransformIsNetworked(newTarget ? newTarget.transform : null));
+                return;
+            }
+
             if (lineRenderer)
             {
                 lineRenderer.enabled = (newTarget != null);
             }
-
+            
             if (target)
             {
                 target.dragging = false;
             }
 
+            var oldTarget = target;
             target = newTarget;
-            if (target)
+            if (owner && owner.networkAdapter && (target || (!target && oldTarget)))
+            {
+                if (MasterNetworkAdapter.mode != MasterNetworkAdapter.NetworkMode.Client && !fromClient)
+                {
+                    queueServerCall = true;
+                }
+            }
+
+            if (target && ((MasterNetworkAdapter.mode != MasterNetworkAdapter.NetworkMode.Client && (!owner.tractorSwitched || !target.GetComponent<Entity>())) || fromServer))
             {
                 target.dragging = true;
+            }
+
+            if (MasterNetworkAdapter.mode != MasterNetworkAdapter.NetworkMode.Off && !MasterNetworkAdapter.lettingServerDecide && 
+                target != oldTarget && owner.networkAdapter && EntityNetworkAdapter.TransformIsNetworked(newTarget ? newTarget.transform : null))
+            {
+                finalTractorForFrame = EntityNetworkAdapter.GetNetworkId(newTarget ? newTarget.transform : null);
+                serverTractorDirty = true;
             }
         }
     }
@@ -235,13 +302,18 @@ public class TractorBeam : MonoBehaviour
             return false;
         }
 
+        if ((newTarget.GetComponent<EnergySphereScript>() && newTarget.dragging) && !(target == newTarget))
+        {
+            return false;
+        }
+        
         return InvertTractorCheck(owner, newTarget);
     }
 
     public static bool InvertTractorCheck(Entity owner, Draggable newTarget)
     {
         Entity requestedTarget = newTarget.gameObject.GetComponent<Entity>();
-        if (owner.tractorSwitched || !requestedTarget || ((requestedTarget.faction == owner.faction) && (requestedTarget is Drone || requestedTarget is Tank || requestedTarget is Turret)))
+        if (owner.tractorSwitched || !requestedTarget || (FactionManager.IsAllied(requestedTarget.faction, owner.faction) && (requestedTarget is Drone || requestedTarget is Tank || requestedTarget is Turret)))
         {
             return true;
         }
@@ -269,6 +341,11 @@ public class TractorBeam : MonoBehaviour
         if (tractorBeamPrefab)
         {
             Destroy(tractorBeamPrefab);
+        }
+
+        if (target && target.GetComponentInChildren<Draggable>())
+        {
+            target.GetComponentInChildren<Draggable>().dragging = false;
         }
     }
 

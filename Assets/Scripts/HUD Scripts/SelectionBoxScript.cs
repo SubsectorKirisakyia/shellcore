@@ -23,7 +23,6 @@ public class SelectionBoxScript : MonoBehaviour
     //private int nodeID = 1;
     private Vector2 lastPosition;
 
-    private bool dronesChecked = false;
     public static bool simpleMouseMovement = true;
 
     private bool clicking = false;
@@ -46,21 +45,8 @@ public class SelectionBoxScript : MonoBehaviour
 
     private bool GetMouseOverTarget()
     {
-        Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition); // create a ray
-        RaycastHit2D[] hits = Physics2D.GetRayIntersectionAll(ray, Mathf.Infinity); // get an array of all hits
-
-        foreach (var hit in hits)
-        {
-            var hitTransform = hit.transform;
-            var ent = hitTransform.GetComponent<Entity>();
-            if ((hitTransform.GetComponent<ITargetable>() != null && hitTransform != PlayerCore.Instance.transform)
-                || (hitTransform.GetComponent<Draggable>() && (!ent || ent.faction == PlayerCore.Instance.faction)))
-            {
-                return true;
-            }
-        }
-
-        return false;
+        Vector2 pos = Camera.main.ScreenToWorldPoint(Input.mousePosition);
+        return CollisionManager.GetTargetAtPosition(pos) != null;
     }
 
     private void SetClicking(bool val)
@@ -68,7 +54,7 @@ public class SelectionBoxScript : MonoBehaviour
         clicking = image.enabled = val;
         if (val)
         {
-            dronesChecked = reticleScript.FindTarget();
+            reticleScript.FindTarget();
             reticleScript.ClearSecondaryTargets();
 
             // Get reference point of selection box for drawing
@@ -135,7 +121,16 @@ public class SelectionBoxScript : MonoBehaviour
             if (ent != PlayerCore.Instance && ent.transform != PlayerCore.Instance.GetTargetingSystem().GetTarget()
                                            && finalBox.Contains(ent.transform.position))
             {
-                reticleScript.AddSecondaryTarget(ent);
+                reticleScript.AddSecondaryTarget(ent.transform);
+            }
+        }
+
+        foreach (var part in AIData.strayParts)
+        {
+            if (part.transform != PlayerCore.Instance.GetTargetingSystem().GetTarget()
+                                           && finalBox.Contains(part.transform.position))
+            {
+                reticleScript.AddSecondaryTarget(part.transform);
             }
         }
     }
@@ -147,19 +142,20 @@ public class SelectionBoxScript : MonoBehaviour
         // Tab cycles primary target
         if (Input.GetKeyDown(KeyCode.Tab) && targSys.GetSecondaryTargets().Count > 0)
         {
-            if (targSys.GetTarget() && targSys.GetTarget().GetComponent<Entity>())
+            if (targSys.GetTarget())
             {
-                reticleScript.AddSecondaryTarget(targSys.GetTarget().GetComponent<Entity>());
+                reticleScript.AddSecondaryTarget(targSys.GetTarget());
             }
 
             var newTarget = targSys.GetSecondaryTargets()[0];
-            reticleScript.SetTarget(newTarget.transform);
+            reticleScript.SetTarget(newTarget);
             reticleScript.RemoveSecondaryTarget(newTarget);
         }
     }
 
     void Update()
     {
+        if (!PlayerCore.Instance || !PlayerCore.Instance.gameObject.activeSelf || !SystemLoader.AllLoaded) return;
         bool overTarget = GetMouseOverTarget();
 
         if (overTarget)

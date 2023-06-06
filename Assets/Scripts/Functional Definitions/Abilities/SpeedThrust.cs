@@ -40,6 +40,12 @@ public class SpeedThrust : ActiveAbility
         }
     }
 
+    public override void ActivationCosmetic(Vector3 targetPos)
+    {
+        base.ActivationCosmetic(targetPos);
+        Execute();
+    }
+
     /// <summary>
     /// Increases core engine power to speed up the core
     /// </summary>

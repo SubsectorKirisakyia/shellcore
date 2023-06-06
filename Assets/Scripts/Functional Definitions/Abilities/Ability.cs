@@ -58,6 +58,8 @@ public abstract class Ability : MonoBehaviour
     public bool isEnabled { get; set; } = true;
 
     bool autoCast = false;
+    public bool abilityIsReadyOnServer = true;
+
     public bool AutoCast
     {
         get { return autoCast; }
@@ -217,7 +219,7 @@ public abstract class Ability : MonoBehaviour
     /// <returns>The cooldown duration remaining on the ability</returns>
     public float TimeUntilReady()
     {
-        if (State == AbilityState.Cooldown || State == AbilityState.Charging || State == AbilityState.Active) // active or on cooldown
+        if (State == AbilityState.Cooldown || State == AbilityState.Charging || State == AbilityState.Active || (this is WeaponAbility && State == AbilityState.Disabled)) // active or on cooldown
         {
             return Mathf.Max(cooldownDuration - (Time.time - startTime), 0); // return the cooldown remaining, calculated prior to this call via TickDown
         }
@@ -242,9 +244,13 @@ public abstract class Ability : MonoBehaviour
             charging = false;
             State = AbilityState.Disabled;
         }
-        else if (Time.time >= startTime + cooldownDuration)
+        else if (Time.time >= startTime + cooldownDuration && (!MasterNetworkAdapter.lettingServerDecide || abilityIsReadyOnServer || Time.time >= startTime + cooldownDuration + 0.5F))
         {
             charging = false;
+            if (!MasterNetworkAdapter.lettingServerDecide && State != AbilityState.Ready && Core && Core.networkAdapter && Core.networkAdapter.isPlayer.Value)
+            {
+                Core.networkAdapter.SetAbilityReadyClientRpc(part ? part.info.location : Vector2.zero);
+            }
             State = AbilityState.Ready;
         }
         else if (Time.time >= startTime + activeDuration)
@@ -274,21 +280,57 @@ public abstract class Ability : MonoBehaviour
         }
     }
 
+    protected void SetActivationState()
+    {
+        startTime = Time.time; // Set activation time
+        charging = true;
+        UpdateState(); // Update state
+    }
+
+    protected virtual bool ExtraCriteriaToActivate()
+    {
+        return true;
+    }
+
+    protected virtual void ExtraCriteriaFailureEvent()
+    {
+    }
+
     public virtual void Activate()
     {
+        var lettingServerDecide = MasterNetworkAdapter.lettingServerDecide;
         // If (NPC or (Player and not interacting)) and enough energy
-        if (State == AbilityState.Ready && !(Core is PlayerCore player && player.GetIsInteracting()) && Core.GetHealth()[2] >= energyCost)
+        if (State != AbilityState.Ready || (Core is PlayerCore player && player.GetIsInteracting()) || Core.GetHealth()[2] < energyCost) return;
+        if (!lettingServerDecide || ExtraCriteriaToActivate()) 
         {
             Core.TakeEnergy(energyCost); // remove the energy
-            startTime = Time.time; // Set activation time
-            charging = true;
-            UpdateState(); // Update state
-            // If there's no charge time, execute immediately
-            if (State == AbilityState.Active || State == AbilityState.Cooldown)
+            SetActivationState();
+        }
+        else
+        {
+            ExtraCriteriaFailureEvent();
+        }
+        
+        if (lettingServerDecide && Core && Core.networkAdapter && ExtraCriteriaToActivate()) 
+        {
+            if (Core.networkAdapter.isPlayer.Value) abilityIsReadyOnServer = false;
+            Core.networkAdapter.ExecuteAbilityServerRpc(part ? part.info.location : Vector2.zero, Vector2.zero);
+        }
+        // If there's no charge time, execute immediately
+        if (!lettingServerDecide && (State == AbilityState.Active || State == AbilityState.Cooldown))
+        {
+            Execute();
+            if (Core && Core.networkAdapter)
             {
-                Execute();
+                Core.networkAdapter.ExecuteAbilityCosmeticClientRpc(part ? part.info.location : Vector2.zero, part ? part.transform.position : Vector3.zero);
             }
         }
+    }
+
+    // What immediately happens when a weapon is fired
+    public virtual void ActivationCosmetic(Vector3 targetPos)
+    {
+
     }
 
     /// <summary>
@@ -313,12 +355,12 @@ public abstract class Ability : MonoBehaviour
         UpdateBlinker();
 
         // If ability activated
-        if (State == AbilityState.Active && prevState == AbilityState.Charging)
+        if (State == AbilityState.Active && prevState == AbilityState.Charging && !MasterNetworkAdapter.lettingServerDecide)
         {
             Execute(); // execute the ability
         }
         // If the ability needs to cool down
-        else if (State == AbilityState.Cooldown && prevState != AbilityState.Cooldown && prevState != AbilityState.Ready)
+        else if (State == AbilityState.Cooldown && prevState != AbilityState.Cooldown && prevState != AbilityState.Ready && prevState != AbilityState.Charging)
         {
             Deactivate(); // deactivate the ability
         }
@@ -350,7 +392,7 @@ public abstract class Ability : MonoBehaviour
         else if (State == AbilityState.Active)
         {
             // Do not reveal stealth enemies by blinking their parts
-            if (ID == AbilityID.Stealth && core.faction != 0)
+            if (ID == AbilityID.Stealth && (PlayerCore.Instance && PlayerCore.Instance.faction != core.faction))
             {
                 if (glow)
                 {

@@ -47,6 +47,7 @@ public class IonLineController : MonoBehaviour
 
     public void StartFiring(float duration)
     {
+        if (targetingSystem == null || !targetingSystem.GetTarget() || !line) return;
         this.duration = duration;
         line.startWidth = line.endWidth = startWidth;
 
@@ -174,30 +175,25 @@ public class IonLineController : MonoBehaviour
             ThickenLine(0.005F);
 
             var dps = damage * Time.deltaTime;
-            var raycastHits = Physics2D.RaycastAll(transform.position, GetVectorByBearing(originalBearing), range);
-            for (int i = 0; i < raycastHits.Length; i++)
+
+            var damageable = CollisionManager.RaycastDamageable(transform.position, transform.position + GetVectorByBearing(originalBearing) * range, VerifyTarget, out var point);
+            if (damageable != null)
             {
-                var damageable = raycastHits[i].transform.GetComponentInParent<IDamageable>();
-                if (raycastHits[i].transform && damageable != null && damageable.GetFaction() != Core.faction && !damageable.GetIsDead() && damageable.GetTerrain() != Entity.TerrainType.Ground)
+                var hitTransform = damageable.GetTransform();
+
+                var magnitude = (point - (Vector2)transform.position).magnitude;
+                line.SetPosition(1, transform.position + GetVectorByBearing(originalBearing) * magnitude);
+                Core.TakeEnergy(energyCost * Time.deltaTime);
+
+                var part = hitTransform.GetComponentInChildren<ShellPart>();
+
+                var residue = damageable.TakeShellDamage(dps, 0, GetComponentInParent<Entity>());
+
+                // deal instant damage
+
+                if (part)
                 {
-                    var hitTransform = raycastHits[i].transform;
-
-                    var magnitude = (hitTransform.position - transform.position).magnitude;
-                    line.SetPosition(1, transform.position + GetVectorByBearing(originalBearing) * magnitude);
-                    Core.TakeEnergy(energyCost * Time.deltaTime);
-
-                    var part = hitTransform.GetComponentInChildren<ShellPart>();
-
-                    var residue = damageable.TakeShellDamage(dps, 0, GetComponentInParent<Entity>());
-
-                    // deal instant damage
-
-                    if (part)
-                    {
-                        part.TakeDamage(residue);
-                    }
-
-                    break;
+                    part.TakeDamage(residue);
                 }
             }
 
@@ -231,6 +227,11 @@ public class IonLineController : MonoBehaviour
                 }
             }
         }
+    }
+
+    bool VerifyTarget(Entity entity)
+    {
+        return entity.GetFaction() != Core.faction && !entity.GetIsDead() && entity.GetTerrain() != Entity.TerrainType.Ground;
     }
 
     public float GetDuration()

@@ -2,8 +2,8 @@
 
 public class Laser : Bullet
 {
-    public static readonly int laserDamage = 45;
-    public static readonly float laserPierceFactor = 0.25F;
+    public static readonly int laserDamage = 55;
+    public static readonly float laserPierceFactor = 0F;
 
     private int bulletsLeft = 0;
     private float bulletFrequency = 0.15F;
@@ -24,9 +24,9 @@ public class Laser : Bullet
         prefabScale = Vector2.one;
         terrain = Entity.TerrainType.All;
         category = Entity.EntityCategory.Unit;
+        bonusDamageType = typeof(Tank);
         pierceFactor = laserPierceFactor;
         bulletSound = "clip_laser";
-        bonusDamageType = null;
     }
 
     protected override void Start()

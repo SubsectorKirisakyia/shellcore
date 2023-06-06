@@ -7,6 +7,10 @@ public class TowerBase : MonoBehaviour, IInteractable, IVendor
     BattleZoneManager BZManager;
     protected Tower currentTower;
     public Dialogue currentDialogue;
+    public EntityNetworkAdapter GetAdapter()
+    {
+        return null;
+    }
     public void SetCurrentTower(Tower tower)
     {
         currentTower = tower;
@@ -103,7 +107,7 @@ public class TowerBase : MonoBehaviour, IInteractable, IVendor
         return 3;
     }
 
-    public bool NeedsSameFaction()
+    public bool NeedsAlliedFaction()
     {
         return false;
     }

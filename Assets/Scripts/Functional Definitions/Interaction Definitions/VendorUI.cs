@@ -8,7 +8,8 @@ public interface IVendor
     int GetFaction();
     Vector3 GetPosition();
     Transform GetTransform();
-    bool NeedsSameFaction();
+    bool NeedsAlliedFaction();
+    EntityNetworkAdapter GetAdapter();
 }
 
 public class VendorUI : MonoBehaviour, IDialogueable, IWindow
@@ -148,7 +149,7 @@ public class VendorUI : MonoBehaviour, IDialogueable, IWindow
             player = PlayerCore.Instance;
         }
 
-        if (player && vendor.NeedsSameFaction() && vendor.GetFaction() != player.faction)
+        if (player && vendor.NeedsAlliedFaction() && !FactionManager.IsAllied(vendor.GetFaction(), player.faction))
         {
             Debug.Log("Vendor faction changed");
             CloseUI();
@@ -192,8 +193,15 @@ public class VendorUI : MonoBehaviour, IDialogueable, IWindow
 
     public static Entity BuyItem(ShellCore core, int index, IVendor vendor)
     {
+        if (MasterNetworkAdapter.mode == MasterNetworkAdapter.NetworkMode.Client)
+        {
+            if (!core.networkAdapter) return null;
+            core.networkAdapter.ExecuteVendorPurchaseServerRpc(index, vendor.GetAdapter().NetworkObjectId);
+            return null;
+        }
+
         // TODO: these booleans can be used this way right now but a new IVendor state should be created for if commanding count is needed
-        if (vendor.NeedsSameFaction() && core.unitsCommanding.Count >= core.GetTotalCommandLimit())
+        if (vendor.NeedsAlliedFaction() && core.unitsCommanding.Count >= core.GetTotalCommandLimit())
         {
             return null;
         }
@@ -201,16 +209,21 @@ public class VendorUI : MonoBehaviour, IDialogueable, IWindow
         GameObject creation = new GameObject();
         creation.transform.position = vendor.GetPosition();
         var blueprint = vendor.GetVendingBlueprint();
+        
+        if (index < 0 || blueprint.items.Count <= index) return null;
+        if (core.GetPower() < blueprint.items[index].cost) return null;
+
         if (blueprint.items[index].entityBlueprint == null)
         {
             blueprint.items[index].entityBlueprint = SectorManager.TryGettingEntityBlueprint(blueprint.items[index].json); 
         }
+        bool tractor = false;
         switch (blueprint.items[index].entityBlueprint.intendedType)
         {
             case EntityBlueprint.IntendedType.Turret:
                 Turret tur = creation.AddComponent<Turret>();
                 tur.blueprint = blueprint.items[index].entityBlueprint;
-                core.SetTractorTarget(creation.GetComponent<Draggable>());
+                tractor = true;
                 tur.SetOwner(core);
 
                 if (SectorManager.instance && SectorManager.instance.GetComponentInChildren<BattleZoneManager>())
@@ -248,18 +261,26 @@ public class VendorUI : MonoBehaviour, IDialogueable, IWindow
             default:
                 break;
         }
-        creation.GetComponent<Entity>().spawnPoint = vendor.GetPosition();
-        creation.GetComponent<Entity>().faction = core.faction;
+        var ent = creation.GetComponent<Entity>();
+        ent.spawnPoint = vendor.GetPosition();
+        ent.faction = core.faction;
+        if (MasterNetworkAdapter.mode != MasterNetworkAdapter.NetworkMode.Off)
+        {
+            ent.ID = SectorManager.instance.GetFreeEntityID();
+            ent.blueprintString = JsonUtility.ToJson(blueprint.items[index].entityBlueprint);
+            ent.AttemptCreateNetworkObject(false);
+        }
+        if (tractor) core.SetTractorTarget(creation.GetComponent<Draggable>());
         creation.name = blueprint.items[index].entityBlueprint.name;
         core.sectorMngr.InsertPersistentObject(blueprint.items[index].entityBlueprint.name, creation);
         core.AddPower(-blueprint.items[index].cost);
-        return creation.GetComponent<Entity>();
+        return ent;
     }
 
     public void onButtonPressed(int index)
     {
-        if (player.GetPower() >= blueprint.items[index].cost && (!vendor.NeedsSameFaction() || FactionManager.IsAllied(player.faction, vendor.GetFaction()))
-                                                             && (!vendor.NeedsSameFaction() || player.unitsCommanding.Count < player.GetTotalCommandLimit()))
+        if (player.GetPower() >= blueprint.items[index].cost && (!vendor.NeedsAlliedFaction() || FactionManager.IsAllied(player.faction, vendor.GetFaction()))
+                                                             && (!vendor.NeedsAlliedFaction() || player.unitsCommanding.Count < player.GetTotalCommandLimit()))
         {
             BuyItem(player, index, vendor);
             if (GetActive())
@@ -269,7 +290,7 @@ public class VendorUI : MonoBehaviour, IDialogueable, IWindow
 
             ClearVendor();
         }
-        else if (player && (vendor.NeedsSameFaction() && player.GetUnitsCommanding().Count >= player.GetTotalCommandLimit()))
+        else if (player && (vendor.NeedsAlliedFaction() && player.GetUnitsCommanding().Count >= player.GetTotalCommandLimit()))
         {
             player.alerter.showMessage("Unit limit reached!", "clip_alert");
         }

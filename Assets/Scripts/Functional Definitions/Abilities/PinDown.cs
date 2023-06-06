@@ -8,6 +8,7 @@ public class PinDown : ActiveAbility
     Craft target;
     const float range = 15f;
     float rangeSquared = range * range;
+    private static float PINDOWN_ACTIVE_DURATION = 5f;
 
     public override float GetRange()
     {
@@ -21,7 +22,7 @@ public class PinDown : ActiveAbility
         ID = AbilityID.PinDown;
         energyCost = 100f;
         cooldownDuration = 10f;
-        activeDuration = 5f;
+        activeDuration = PINDOWN_ACTIVE_DURATION;
     }
 
     public override void Deactivate()
@@ -33,53 +34,84 @@ public class PinDown : ActiveAbility
         }
     }
 
+    public override void ActivationCosmetic(Vector3 targetPos)
+    {
+        AudioManager.PlayClipByID("clip_activateability", targetPos);
+        base.ActivationCosmetic(targetPos);
+    }
+
+
+    private static GameObject missileLinePrefab;
+    public static void InflictionCosmetic(Entity entity, int coreFaction = 0)
+    {
+        if (!missileLinePrefab)
+        {
+            missileLinePrefab = new GameObject("Missile Line"); // create prefab and set to parent
+            LineRenderer lineRenderer = missileLinePrefab.AddComponent<LineRenderer>(); // add line renderer
+            lineRenderer.material = ResourceManager.GetAsset<Material>("white_material"); // get material
+            MissileAnimationScript comp = missileLinePrefab.AddComponent<MissileAnimationScript>(); // add the animation script
+        }
+
+        var missileColor = new Color(0.8F, 1F, 1F, 0.9F);
+
+        foreach (var part in entity.GetComponentsInChildren<ShellPart>())
+        {
+            var x = Instantiate(missileLinePrefab, part.transform); // instantiate
+            x.GetComponent<MissileAnimationScript>().Initialize(); // initialize
+            x.GetComponent<MissileAnimationScript>().lineColor = missileColor;
+            Destroy(x, PINDOWN_ACTIVE_DURATION);
+        }
+    }
     /// <summary>
     /// Immobilizes a nearby enemy
     /// </summary>
     protected override void Execute()
     {
-        AudioManager.PlayClipByID("clip_activateability", transform.position);
-        var targeting = Core.GetTargetingSystem();
-        float minDist = rangeSquared;
+        ActivationCosmetic(transform.position);
         target = null;
-        for (int i = 0; i < AIData.entities.Count; i++)
+        float minDist = rangeSquared;
+        var targetTransform = Core.GetTargetingSystem().GetTarget();
+
+        if (targetTransform)
         {
-            if (AIData.entities[i] is Craft && !AIData.entities[i].GetIsDead() && !FactionManager.IsAllied(AIData.entities[i].faction, Core.faction))
+            var targetTransformDist = (targetTransform.position - Core.transform.position).sqrMagnitude;
+            if (targetTransformDist < minDist && ValidityCheck(targetTransform.GetComponent<Entity>()))
             {
-                float d = (Core.transform.position - AIData.entities[i].transform.position).sqrMagnitude;
-                if (d < minDist && !AIData.entities[i].IsInvisible)
-                {
-                    minDist = d;
-                    target = AIData.entities[i] as Craft;
-                }
+                target = targetTransform.GetComponent<Entity>() as Craft;
             }
         }
+
+
+        if (!target)
+            for (int i = 0; i < AIData.entities.Count; i++)
+            {
+                if (ValidityCheck(AIData.entities[i]))
+                {
+                    float d = (Core.transform.position - AIData.entities[i].transform.position).sqrMagnitude;
+                    if (d < minDist)
+                    {
+                        minDist = d;
+                        target = AIData.entities[i] as Craft;
+                    }
+                }
+            }
 
         if (target != null)
         {
             target.AddPin();
-
-
-            var missileLinePrefab = new GameObject("Missile Line"); // create prefab and set to parent
-            missileLinePrefab.transform.SetParent(transform, false);
-
-            var missileColor = part && part.info.shiny ? FactionManager.GetFactionShinyColor(Core.faction) : new Color(0.8F, 1F, 1F, 0.9F);
-
-            // I use this prefab as one of the active lines on the missile 
-            // because what's the point in not doing it this way
-
-            LineRenderer lineRenderer = missileLinePrefab.AddComponent<LineRenderer>(); // add line renderer
-            lineRenderer.material = ResourceManager.GetAsset<Material>("white_material"); // get material
-            MissileAnimationScript comp = missileLinePrefab.AddComponent<MissileAnimationScript>(); // add the animation script
-            foreach (var part in target.GetComponentsInChildren<ShellPart>())
-            {
-                var x = Instantiate(missileLinePrefab, part.transform); // instantiate
-                x.GetComponent<MissileAnimationScript>().Initialize(); // initialize
-                x.GetComponent<MissileAnimationScript>().lineColor = missileColor;
-                Destroy(x, activeDuration);
-            }
+            InflictionCosmetic(target, Core.faction);
+            if (target.networkAdapter) target.networkAdapter.InflictionCosmeticClientRpc((int)AbilityID.PinDown);
         }
 
         base.Execute();
+
     }
+
+
+
+    bool ValidityCheck(Entity ent)
+    {
+        return (ent is Craft && !ent.GetIsDead() && !FactionManager.IsAllied(ent.faction, Core.faction) && !ent.IsInvisible);
+    }
+
 }

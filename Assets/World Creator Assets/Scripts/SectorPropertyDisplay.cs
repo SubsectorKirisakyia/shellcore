@@ -89,10 +89,8 @@ public class SectorPropertyDisplay : MonoBehaviour
         clearBGSpawnsButton.SetActive(false);
         parseBGSpawnsButton.SetActive(false);
         deleteButton.SetActive(false);
-        for (int i = 0; i < shardCounts.Count; i++)
-        {
-            shardCounts[i].gameObject.SetActive(false);
-        }
+        if (shardCounts != null && shardCounts.Count > 0)
+            shardCounts[0].transform.parent.gameObject.SetActive(false);
 
         opening = false;
     }
@@ -140,10 +138,8 @@ public class SectorPropertyDisplay : MonoBehaviour
         clearBGSpawnsButton.SetActive(true);
         parseBGSpawnsButton.SetActive(true);
         deleteButton.SetActive(true);
-        for (int i = 0; i < shardCounts.Count; i++)
-        {
-            shardCounts[i].gameObject.SetActive(true);
-        }
+        if (shardCounts != null && shardCounts.Count > 0)
+            shardCounts[0].transform.parent.gameObject.SetActive(true);
 
 
         waveSet.text = sector.waveSetPath;
@@ -178,6 +174,12 @@ public class SectorPropertyDisplay : MonoBehaviour
             w.text = currentSector.bounds.w.ToString();
             h.text = currentSector.bounds.h.ToString();
         }
+    }
+
+    void LateUpdate()
+    {
+
+        if (updateLayout) ForceUpdateLayoutGroup();
     }
 
     public void UpdateType()
@@ -309,6 +311,8 @@ public class SectorPropertyDisplay : MonoBehaviour
             {
                 PlayerPrefs.SetFloat($"WCSectorPropertyDisplay_defaultB{type.value}", float.Parse(colorB.text));
             }
+
+            WorldCreatorCursor.instance.UpdateCurrentSectorToDefault();
         }
 
         editingDefaults = false;
@@ -337,6 +341,13 @@ public class SectorPropertyDisplay : MonoBehaviour
         bgSpawnInputFields.Add((field, drop));
         field.text = text;
         drop.value = faction;
+        updateLayout = true;
+    }
+
+    private bool updateLayout;
+
+    private void ForceUpdateLayoutGroup()
+    {
         Canvas.ForceUpdateCanvases();
         bgSpawnScrollContents.GetComponent<RectTransform>().sizeDelta = new Vector2(100, bgSpawnScrollContents.GetComponent<VerticalLayoutGroup>().minHeight);
         LayoutRebuilder.ForceRebuildLayoutImmediate(mainContents);
@@ -355,6 +366,7 @@ public class SectorPropertyDisplay : MonoBehaviour
         }
 
         bgSpawnInputFields.Clear();
+        updateLayout = true;
     }
 
     public void TryParseBGSpawns()
@@ -397,7 +409,6 @@ public class SectorPropertyDisplay : MonoBehaviour
             }
             else
             {
-                // TODO: Reused code from WCSiegeWaveHandler, fix
                 Sector.LevelEntity ent = new Sector.LevelEntity();
                 ent.assetID = "shellcore_blueprint";
                 ent.faction = field.Item2.value; // maybe change this later

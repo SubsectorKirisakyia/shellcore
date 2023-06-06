@@ -167,7 +167,7 @@ public static class AbilityUtilities
             case 8:
                 return $"Slow projectile that deals {Torpedo.torpedoDamage * tier} damage to ground entities.";
             case 9:
-                return $"Rapidly fires 5 projectiles that deal {Laser.laserDamage * tier} damage. 25% pierces to core.";
+                return $"Rapidly fires 5 projectiles that deal {Laser.laserDamage * tier} damage.";
             case 10:
                 if (string.IsNullOrEmpty(secondaryData))
                 {
@@ -202,9 +202,9 @@ public static class AbilityUtilities
             case 24:
                 return "Become invisible to enemies.";
             case 25:
-                return $"All weapon damage increased by {DamageBoost.damageAddition * Mathf.Max(1, tier)}.";
+                return $"All weapon damage increased by {Mathf.Round(DamageBoost.damageFactor * Mathf.Max(1, tier) * 100)}%.";
             case 26:
-                return $"Instantly heals self and nearby allies by {AreaRestore.heal * Mathf.Max(1, tier)} shell";
+                return $"Instantly heals nearby allies by {AreaRestore.heal * Mathf.Max(1, tier)} shell.";
             case 27:
                 return "Immobilizes the target.";
             case 28:
@@ -220,22 +220,22 @@ public static class AbilityUtilities
             case 33:
                 return "Disrupt enemy ability cooldowns.";
             case 34:
-                return $"Gives allies additional {Control.baseControlFractionBoost * 100 * tier}% shell and {Control.damageAddition * tier} weapon damage.";
+                return $"Gives allies additional {Control.baseControlFractionBoost * 100 * tier}% shell and {Mathf.Round(Control.damageFactor * Mathf.Max(1, tier) * 100)}% weapon damage.";
             case 35:
                 return "Temporarily pulls you to your tractor target and allows you to tractor most entities.";
             case 36:
-                return $"Stationary projectile that deals {Bomb.bombDamage * tier} damage. \nProjectile lasts {45F * tier} seconds.";
+                return $"Stationary projectile that deals {Bomb.bombDamage * tier} damage. \nProjectile lasts {5} seconds.";
             case 37:
                 return $"Slow moving beam that deals {IonLineController.damageC * tier} damage per second for 5 seconds. "
                        + $"\nBeam costs {IonLineController.energyC * tier} energy per second.";
             case 38:
-                return $"Fires at most 5 projectiles at different targets that each deal {Flak.bulletDamage * tier} damage.";
+                return $"Fires at least 1 projectile at different targets that each deal {Flak.bulletDamage * tier} damage.\nCan fire at as many drones as are in range, and disables them for 3 seconds each.";
             case 39:
                 return $"Slow projectile that deals {Rocket.bulletDamage * tier} to air stations.";
             case 40:
                 return "Warps your currently held part directly into your inventory.";
             case 41:
-                return $"Temporarily reduces Global Cooldown by {Mathf.Min(tier, 1)}/{Mathf.Min(tier, 1) + 1}.";
+                return $"Temporarily reduces Global Cooldown by {Mathf.Min(tier, 1)}/{Mathf.Max(tier, 1) + 1}.";
             case 45:
                 return $"Instant attack that deals {Beam.beamDamage * tier} damage to multiple targets.";
             case 46:

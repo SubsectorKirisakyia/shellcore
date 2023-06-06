@@ -19,7 +19,7 @@ public class PartyManager : MonoBehaviour
 
     public bool PartyLocked
     {
-        get { return SectorManager.instance.GetCurrentType() == Sector.SectorType.BattleZone || overrideLock; }
+        get { return SectorManager.instance.GetCurrentType() == Sector.SectorType.BattleZone || SectorManager.instance.GetCurrentType() == Sector.SectorType.SiegeZone || overrideLock; }
     }
 
     public void SetOverrideLock(bool val)
@@ -129,6 +129,13 @@ public class PartyManager : MonoBehaviour
 
     public void ClearParty()
     {
+        int i = 0;
+        while (partyMembers != null && partyMembers.Count > 0 && i < 10)
+        {
+            UnassignBackend(null, partyMembers[0]);
+            i++;
+        }
+
         partyMembers.Clear();
         foreach (var val in partyIndicators.Values)
         {
@@ -206,8 +213,8 @@ public class PartyManager : MonoBehaviour
             member.GetAI().follow(null);
         }
 
-        partyMembers.Remove(member);
-        if (charID != null) partyResponses.Remove(charID);
+        if (partyMembers != null) partyMembers.Remove(member);
+        if (charID != null && partyResponses != null) partyResponses.Remove(charID);
 
         if (member && partyIndicators.ContainsKey(member))
         {

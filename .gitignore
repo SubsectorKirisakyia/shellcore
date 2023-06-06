@@ -2,6 +2,7 @@
 [Tt]emp/
 [Oo]bj/
 [Bb]uild/
+scc_binaries/
 [Bb]uilds/
 [Ll]ogs/
 Assets/AssetStoreTools*
@@ -49,3 +50,4 @@ Assets/StreamingAssets/Sectors/*
 !Assets/StreamingAssets/Sectors/main*
 Assets/StreamingAssets/Sectors/**/*.meta
 !Assets/StreamingAssets/Sectors/AI-Test*
+!Assets/StreamingAssets/Sectors/rudderbucky server*

@@ -11,10 +11,13 @@ public class ShellPart : MonoBehaviour
     float detachedTime; // time since detachment
     public ShellPart parent = null;
     public List<ShellPart> children = new List<ShellPart>();
+    [SerializeField]
     private bool hasDetached; // is the part detached
-    private SpriteRenderer spriteRenderer;
+    [HideInInspector]
+    public SpriteRenderer spriteRenderer;
     private Rigidbody2D rigid;
-    private Entity craft;
+    [HideInInspector]
+    public Entity craft;
     public float partHealth; // health of the part (half added to shell, quarter to core)
     public float partMass; // mass of the part
     private float currentHealth; // current health of part
@@ -30,6 +33,8 @@ public class ShellPart : MonoBehaviour
     public string droppedSectorName;
     public static int partShader = 0;
     public static List<Material> shaderMaterials = null;
+    public Vector2 colliderExtents;
+    public Matrix4x4 colliderMatrix;
 
     public bool weapon = false;
 
@@ -119,11 +124,10 @@ public class ShellPart : MonoBehaviour
         spriteRenderer.material = shaderMaterials[partShader];
         spriteRenderer.sprite = ResourceManager.GetAsset<Sprite>(blueprint.spriteID);
         var part = obj.GetComponent<ShellPart>();
+        part.craft = part.transform.root.GetComponent<Entity>();
         part.partMass = blueprint.mass;
         part.partHealth = blueprint.health;
-        part.currentHealth = blueprint.health;
-        var collider = obj.GetComponent<PolygonCollider2D>();
-        collider.isTrigger = true;
+        part.currentHealth = part.partHealth;
         part.detachible = blueprint.detachible;
 
         var partSys = obj.GetComponent<ParticleSystem>();
@@ -137,6 +141,15 @@ public class ShellPart : MonoBehaviour
         e.rateOverTime = new ParticleSystem.MinMaxCurve(3 * (blueprint.size + 1));
         e.enabled = false;
         part.partSys = partSys;
+        if (spriteRenderer.sprite)
+        {
+            part.colliderExtents = spriteRenderer.sprite.bounds.extents;
+        }
+        else
+        {
+            part.colliderExtents = Vector2.one * 0.5f;
+        }
+
         return obj;
     }
 
@@ -145,6 +158,7 @@ public class ShellPart : MonoBehaviour
     /// </summary>
     public void Detach(bool drop = false)
     {
+        if (hasDetached) return;
         if (name != "Shell Sprite")
         {
             transform.SetParent(null, true);
@@ -170,9 +184,12 @@ public class ShellPart : MonoBehaviour
         rigid.gravityScale = 0; // adjust the rigid body
         rigid.angularDrag = 0;
         float randomDir = Random.Range(0f, 360f);
-        var vec = (new Vector2(Mathf.Cos(randomDir), Mathf.Sin(randomDir))) + craft.GetComponent<Rigidbody2D>().velocity * 2F;
+        var vec = (new Vector2(Mathf.Cos(randomDir), Mathf.Sin(randomDir))) + (craft && craft.GetComponent<Rigidbody2D>() ? craft.GetComponent<Rigidbody2D>().velocity * 2F : Vector2.zero);
         vec = vec.normalized;
-        rigid.AddForce(vec * 200f);
+        if (name != "Shell Sprite")
+        {
+            rigid.AddForce(vec * 200f);
+        }
         //rigid.AddTorque(150f * ((Random.Range(0, 2) == 0) ? 1 : -1));
         rotationDirection = (Random.Range(0, 2) == 0);
         gameObject.layer = 9;
@@ -185,7 +202,6 @@ public class ShellPart : MonoBehaviour
         }
 
         GetComponentInChildren<Ability>()?.SetDestroyed(true);
-        GetComponent<Collider2D>().enabled = true;
 
         // when a part detaches it should always be completely visible
         var renderers = GetComponentsInChildren<SpriteRenderer>();
@@ -214,6 +230,7 @@ public class ShellPart : MonoBehaviour
         spriteRenderer = GetComponent<SpriteRenderer>();
     }
 
+    // What is this supposed to do?
     public void EditorPlayerPartCheck()
     {
         if (craft is PlayerCore player)
@@ -233,6 +250,11 @@ public class ShellPart : MonoBehaviour
         }
     }
 
+    public void SetFaction(int faction)
+    {
+        this.faction = faction;
+    }
+
     public void Start()
     {
         // initialize instance fields
@@ -245,9 +267,15 @@ public class ShellPart : MonoBehaviour
         {
             currentHealth /= 4;
         }
+        if (craft is ICarrier)
+        {
+            currentHealth = partHealth = partHealth * 2;
+        }
 
-        craft = transform.root.GetComponent<Entity>();
-        faction = craft.faction;
+        if (!craft)
+            craft = transform.root.GetComponent<Entity>();
+        if (craft)
+            faction = craft.faction;
         gameObject.layer = 0;
 
         if (GetComponent<Ability>())
@@ -470,9 +498,9 @@ public class ShellPart : MonoBehaviour
     // ignores parameter alpha, since stealthing changes it
     public void SetPartColor(Color color)
     {
-        color.a = (craft.IsInvisible ? (craft.faction == 0 ? 0.2f : 0f) : color.a);
-        spriteRenderer.color = color;
-        if (shooter)
+        color.a = (craft && craft.IsInvisible ? (craft.faction == 0 ? 0.2f : 0f) : color.a);
+        if (spriteRenderer) spriteRenderer.color = color;
+        if (shooter && shooter.GetComponent<SpriteRenderer>())
         {
             shooter.GetComponent<SpriteRenderer>().color = spriteRenderer.color;
         }
@@ -481,10 +509,6 @@ public class ShellPart : MonoBehaviour
         if (partSys)
         {
             partSysColorMod = partSys.colorOverLifetime;
-        }
-
-        if (partSys)
-        {
             partSysColorMod.color = new ParticleSystem.MinMaxGradient(color);
         }
     }

@@ -51,14 +51,25 @@ public class HealthHeal : Ability
 
     public static readonly int[] heals = new int[] { 750, 500, 300 };
 
+    protected override bool ExtraCriteriaToActivate()
+    {
+        return Core.GetHealth()[(int)type] < Core.GetMaxHealth()[(int)type];
+    }
+
+    public override void ActivationCosmetic(Vector3 targetPos)
+    {
+        AudioManager.PlayClipByID("clip_healeffect", targetPos);
+        base.ActivationCosmetic(targetPos);
+    }
+
     /// <summary>
     /// Heals the shell of the core (doesn't heal and refunds the energy used if it would overheal)
     /// </summary>
     protected override void Execute()
     {
-        if (Core.GetHealth()[(int)type] < Core.GetMaxHealth()[(int)type])
+        if (ExtraCriteriaToActivate())
         {
-            AudioManager.PlayClipByID("clip_healeffect", transform.position);
+            ActivationCosmetic(transform.position);
             switch (type)
             {
                 case HealingType.core:

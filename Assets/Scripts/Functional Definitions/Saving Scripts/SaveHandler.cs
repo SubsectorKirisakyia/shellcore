@@ -9,6 +9,7 @@ public class SaveHandler : MonoBehaviour
     public TaskManager taskManager;
     PlayerSave save;
     public static SaveHandler instance;
+    bool initialized = false;
 
     public PlayerSave GetSave()
     {
@@ -17,6 +18,7 @@ public class SaveHandler : MonoBehaviour
     public void Initialize()
     {
         instance = this;
+        initialized = true;
         string currentPath;
         var CurrentSavePath = System.IO.Path.Combine(Application.persistentDataPath, "CurrentSavePath");
         if (!File.Exists(CurrentSavePath))
@@ -33,7 +35,7 @@ public class SaveHandler : MonoBehaviour
             // Load
             string json = File.ReadAllText(currentPath);
             save = JsonUtility.FromJson<PlayerSave>(json);
-            if (save.timePlayed != 0)
+            if (save.timePlayed != 0 && MasterNetworkAdapter.mode == MasterNetworkAdapter.NetworkMode.Off)
             {
                 player.spawnPoint = save.position;
                 player.Dimension = save.lastDimension;
@@ -81,7 +83,6 @@ public class SaveHandler : MonoBehaviour
             }
 
             player.abilityCaps = save.abilityCaps;
-            player.shards = save.shards;
             player.SetCredits(save.credits);
             player.reputation = save.reputation;
             if (save.presetBlueprints.Length != 5)
@@ -96,7 +97,8 @@ public class SaveHandler : MonoBehaviour
             {
                 taskManager.taskVariables.Add(save.taskVariableNames[i], save.taskVariableValues[i]);
             }
-            StartCoroutine(Autobackup());
+            if (MasterNetworkAdapter.mode == MasterNetworkAdapter.NetworkMode.Off)
+                StartCoroutine(Autobackup());
         }
         else
         {
@@ -105,22 +107,30 @@ public class SaveHandler : MonoBehaviour
             save.presetBlueprints = new string[5];
             save.currentHealths = new float[] { 1000, 250, 500 };
             save.partInventory = new List<EntityBlueprint.PartInfo>();
-
-            player.blueprint = ScriptableObject.CreateInstance<EntityBlueprint>();
-            player.blueprint.name = "Player Save Blueprint";
-            player.blueprint.coreSpriteID = "core1_light";
-            player.blueprint.coreShellSpriteID = "core1_shell";
-            player.blueprint.baseRegen = CoreUpgraderScript.GetRegens(player.blueprint.coreShellSpriteID);
-            player.blueprint.shellHealth = CoreUpgraderScript.defaultHealths;
-            player.blueprint.parts = new List<EntityBlueprint.PartInfo>();
-            player.cursave = save;
+            player.blueprint = GetDefaultBlueprint();
             player.abilityCaps = CoreUpgraderScript.minAbilityCap;
+            player.cursave = save;
         }
     }
 
-    private void UpdateSaveData(PlayerSave playerSave)
+    public static EntityBlueprint GetDefaultBlueprint()
     {
-        playerSave.timePlayed += (Time.timeSinceLevelLoad - timeSinceLastSave) / 60;
+        var blueprint = ScriptableObject.CreateInstance<EntityBlueprint>();
+        blueprint.name = "Player Save Blueprint";
+        blueprint.coreSpriteID = "core1_light";
+        blueprint.coreShellSpriteID = "core1_shell";
+        blueprint.baseRegen = CoreUpgraderScript.GetRegens(blueprint.coreShellSpriteID);
+        blueprint.shellHealth = CoreUpgraderScript.defaultHealths;
+        blueprint.parts = new List<EntityBlueprint.PartInfo>();
+        return blueprint;
+    }
+
+
+    private float timeSinceLastSave;
+    public void UpdateSaveData(PlayerSave playerSave)
+    {
+        save.timePlayed += (Time.timeSinceLevelLoad - timeSinceLastSave) / 60;
+        timeSinceLastSave = Time.timeSinceLevelLoad;
         if (SaveMenuHandler.migratedTimePlayed != null)
         {
             playerSave.timePlayed += (int)SaveMenuHandler.migratedTimePlayed;
@@ -137,7 +147,6 @@ public class SaveHandler : MonoBehaviour
         playerSave.currentPlayerBlueprint = JsonUtility.ToJson(player.blueprint);
         playerSave.credits = player.GetCredits();
         playerSave.abilityCaps = player.abilityCaps;
-        playerSave.shards = player.shards;
         if (playerSave.resourcePath == "" || playerSave.resourcePath.Contains("main"))
         {
             playerSave.resourcePath = SectorManager.instance.resourcePath;
@@ -197,10 +206,9 @@ public class SaveHandler : MonoBehaviour
         playerSave.reputation = player.reputation;
     }
 
-    private float timeSinceLastSave;
-
     public void Save()
     {
+        if (!initialized) return;
         UpdateSaveData(save);
         timeSinceLastSave = Time.timeSinceLevelLoad;
         SaveMenuHandler.migratedTimePlayed = null;

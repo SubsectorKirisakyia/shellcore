@@ -22,7 +22,7 @@ public class ReticleScript : MonoBehaviour
 
     public QuantityDisplayScript quantityDisplay;
     public GameObject secondaryReticlePrefab;
-    public List<(Entity, Transform)> secondariesByObject;
+    public List<(Transform, Transform)> secondariesByObject;
 
     public bool DebugMode = false;
 
@@ -34,7 +34,7 @@ public class ReticleScript : MonoBehaviour
 
     void Start()
     {
-        secondariesByObject = new List<(Entity, Transform)>();
+        secondariesByObject = new List<(Transform, Transform)>();
     }
 
     /// <summary>
@@ -80,12 +80,12 @@ public class ReticleScript : MonoBehaviour
         {
             return false;
         }
-        Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition); // create a ray
-        RaycastHit2D[] hits = Physics2D.GetRayIntersectionAll(ray, Mathf.Infinity, 513); // get an array of all hits
-        if (hits == null)
-        {
-            return false;
-        }
+
+        var mousePos = Input.mousePosition;
+        mousePos.z = CameraScript.zLevel;
+        Vector2 mouseWorldPos = Camera.main.ScreenToWorldPoint(mousePos);
+        var hits = CollisionManager.GetAllTargetsAtPosition(mouseWorldPos);
+
         bool droneInteraction = false;
 
         // This orders secondary target drones to move/follow accordingly.
@@ -93,59 +93,71 @@ public class ReticleScript : MonoBehaviour
         {
             return false;
         }
-        foreach (var ent in targSys.GetSecondaryTargets())
+        mousePos = Camera.main.ScreenToWorldPoint(mousePos);
+        var primaryDroneInteraction = false;
+        if (!Input.GetKey(KeyCode.LeftShift))
         {
-            if (ent && ent.transform)
+            foreach (var ent in targSys.GetSecondaryTargets())
             {
-                droneInteraction = DroneCheck(ent.transform, hits) || droneInteraction;
+                if (ent != null && !ent.Equals(null) && ent)
+                {
+                    droneInteraction = DroneCheck(ent, hits, mousePos) || droneInteraction;
+                }
             }
+
+            // This orders primary target drones to move/follow accordingly.
+            primaryDroneInteraction = DroneCheck(targSys.GetTarget(), hits, mousePos);
+            droneInteraction = droneInteraction || primaryDroneInteraction;
+
+            
+        }
+        if (primaryDroneInteraction || hits.Length == 0) // check if there are actually any hits
+        {
+            targSys.SetTarget(null); // Nothing valid found, set target to null
+            return droneInteraction;
         }
 
-        // This orders primary target drones to move/follow accordingly.
-        var primaryDroneInteraction = DroneCheck(targSys.GetTarget(), hits);
-        droneInteraction = droneInteraction || primaryDroneInteraction;
-
-        if (!primaryDroneInteraction && hits.Length > 0) // check if there are actually any hits
+        Draggable draggableTarget = null;
+        for (int i = 0; i < hits.Length; i++)
         {
-            Draggable draggableTarget = hits[0].transform?.gameObject.GetComponent<Draggable>();
-
-            if (draggableTarget && TractorBeam.InvertTractorCheck(craft, draggableTarget) && draggableTarget.transform != craft.transform)
-            {
-                if (targSys.GetTarget() == draggableTarget.transform)
-                {
-                    PlayerCore player = craft.GetComponent<PlayerCore>();
-                    if (player)
-                    {
-                        player.SetTractorTarget((player.GetTractorTarget() == draggableTarget) ? null : draggableTarget);
-                    }
-                }
-
-                SetTarget(draggableTarget.transform); // set the target to the clicked craft's transform
-
-                return droneInteraction; // Return so that the next check doesn't happen
-            }
-
-
-            ITargetable curTarg = hits[0].transform?.gameObject.GetComponent<ITargetable>();
-            // grab the first one's craft component, others don't matter
-            if (curTarg != null && !curTarg.GetIsDead() && curTarg as Entity != craft)
-            // if it is not null, dead or the player itself and is interactible
-            {
-                // TODO: synchronize this with the proximity script
-                if (curTarg as Entity && !craft.GetIsInteracting() && targSys.GetTarget() == curTarg.GetTransform()
-                                              && (curTarg.GetTransform().position - craft.transform.position).sqrMagnitude < 100
-                                              && (curTarg as Entity).GetInteractible()) //Interact with entity
-                {
-                    ProximityInteractScript.ActivateInteraction(curTarg as Entity);
-                }
-
-                SetTarget(curTarg.GetTransform()); // set the target to the clicked craft's transform
-
-                return droneInteraction; // Return so that the next check doesn't happen
-            }
+            draggableTarget = hits[i]?.gameObject.GetComponent<Draggable>();
+            if (hits[i]?.gameObject.GetComponent<IVendor>() == null) break;
         }
 
-        targSys.SetTarget(null); // Nothing valid found, set target to null
+        if (draggableTarget && TractorBeam.InvertTractorCheck(craft, draggableTarget) && draggableTarget.transform != craft.transform)
+        {
+            if (targSys.GetTarget() == draggableTarget.transform)
+            {
+                PlayerCore player = craft.GetComponent<PlayerCore>();
+                if (player)
+                {
+                    player.SetTractorTarget((player.GetTractorTarget() == draggableTarget) ? null : draggableTarget);
+                }
+            }
+
+            SetTarget(draggableTarget.transform); // set the target to the clicked craft's transform
+
+            return droneInteraction; // Return so that the next check doesn't happen
+        }
+
+
+        ITargetable curTarg = hits[0]?.gameObject.GetComponent<ITargetable>();
+        // grab the first one's craft component, others don't matter
+        if (curTarg != null && !curTarg.GetIsDead() && curTarg as Entity != craft)
+        // if it is not null, dead or the player itself and is interactible
+        {
+            // TODO: synchronize this with the proximity script
+            if (curTarg as Entity && !craft.GetIsInteracting() && targSys.GetTarget() == curTarg.GetTransform()
+                                            && (curTarg.GetTransform().position - craft.transform.position).sqrMagnitude < 100
+                                            && (curTarg as Entity).GetInteractible()) //Interact with entity
+            {
+                ProximityInteractScript.ActivateInteraction(curTarg as Entity);
+            }
+
+            SetTarget(curTarg.GetTransform()); // set the target to the clicked craft's transform
+
+            return droneInteraction; // Return so that the next check doesn't happen
+        }
 
         return droneInteraction;
     }
@@ -191,8 +203,7 @@ public class ReticleScript : MonoBehaviour
             reticleImage.enabled = false;
         }
 
-        ITargetable targetCraft = target ? target.GetComponent<ITargetable>() : null; // if target is an entity
-        UpdateReticleHealths(shellImage, coreImage, targetCraft);
+        UpdateReticleHealths(shellImage, coreImage, target);
     }
 
     public void Focus()
@@ -227,7 +238,8 @@ public class ReticleScript : MonoBehaviour
             {
                 for (int i = 0; i < AIData.entities.Count; i++)
                 {
-                    AddSecondaryTarget(AIData.entities[i]);
+                    if (!AIData.entities[i]) continue;
+                    AddSecondaryTarget(AIData.entities[i].transform);
                 }
             }
 
@@ -253,6 +265,25 @@ public class ReticleScript : MonoBehaviour
                 }
             }
 
+            if (Input.GetKey(KeyCode.LeftShift) && Input.GetMouseButton(0))
+            {
+                SetTarget(null);
+                ClearSecondaryTargets();
+            }
+
+            if (Input.GetKey(KeyCode.LeftControl) && Input.GetKeyDown(KeyCode.Tab) && (craft is PlayerCore player))
+            {
+                SetTarget(null);
+                ClearSecondaryTargets();
+                Debug.LogWarning("test");
+                foreach (var ownable in player.GetUnitsCommanding())
+                {
+                    if (ownable == null || ownable.Equals(null) || !(ownable is Entity ent) || ent.GetIsDead()) continue;
+                    AddSecondaryTarget(ent.transform);
+                }
+            }
+
+
             // Toggle tractor beam
             if (InputManager.GetKeyDown(KeyName.ToggleTractorBeam))
             {
@@ -263,7 +294,7 @@ public class ReticleScript : MonoBehaviour
                     // it's draggable if it's not an entity or it's a draggable entity with the same faction
                     if (draggable && (targSys.GetTarget().position - craft.transform.position).sqrMagnitude <= 400
                                   && (!targSys.GetTarget().GetComponent<Entity>()
-                                      || targSys.GetTarget().GetComponent<Entity>().faction == craft.faction || craft.tractorSwitched))
+                                      || FactionManager.IsAllied(targSys.GetTarget().GetComponent<Entity>().faction, craft.faction) || craft.tractorSwitched))
                     {
                         craft.SetTractorTarget((craft.GetTractorTarget() == draggable) ? null : draggable);
                     }
@@ -280,11 +311,11 @@ public class ReticleScript : MonoBehaviour
         }
     }
 
-    private void SetSecondaryReticleTransform(Entity ent, Transform reticle, int count)
+    private void SetSecondaryReticleTransform(Transform target, Transform reticle, int count)
     {
-        if (ent != null && !ent.GetIsDead() && !ent.GetInvisible())
+        if (target != null && (!(target.GetComponent<Entity>()) || (!target.GetComponent<Entity>().GetIsDead() && !target.GetComponent<Entity>().GetInvisible())))
         {
-            reticle.GetComponent<RectTransform>().anchoredPosition = Camera.main.WorldToScreenPoint(ent.transform.position); // update reticle position
+            reticle.GetComponent<RectTransform>().anchoredPosition = Camera.main.WorldToScreenPoint(target.position); // update reticle position
             reticle.GetComponent<RectTransform>().anchoredPosition *= UIScalerScript.GetScale();
             reticle.Find("Number Marker").GetComponent<Text>().enabled = true;
             reticle.Find("Number Marker").GetComponent<Text>().text = count + "";
@@ -292,7 +323,7 @@ public class ReticleScript : MonoBehaviour
         }
         else
         {
-            RemoveSecondaryTarget((ent, reticle));
+            RemoveSecondaryTarget((target, reticle));
         }
 
         // TIL slashes allow Find searches to work like directories
@@ -302,37 +333,35 @@ public class ReticleScript : MonoBehaviour
         if (DebugMode)
         {
             var energyimage = reticle.Find("Container/EnergyImage").GetComponent<Image>();
-            UpdateReticleHealths(shellImage, coreImage, ent, energyimage);
+            UpdateReticleHealths(shellImage, coreImage, target, energyimage);
         }
         else
         {
-            UpdateReticleHealths(shellImage, coreImage, ent);
+            UpdateReticleHealths(shellImage, coreImage, target);
         }
     }
 
     ///
     /// Checks if the passed Transform is a Drone that the player owns. If so, orders it to move/follow accordingly.
     ///
-    private bool DroneCheck(Transform possibleDrone, RaycastHit2D[] hits)
+    public bool DroneCheck(Transform possibleDrone, Transform[] hits, Vector3 worldMovementVector)
     {
         var check = possibleDrone && possibleDrone.GetComponent<Drone>() &&
                     possibleDrone.GetComponent<Drone>().GetOwner() != null
                     && possibleDrone.GetComponent<Drone>().GetOwner().Equals(craft)
-                    && (hits.Length == 0 || hits[0].transform != possibleDrone);
+                    && (hits == null || hits.Length == 0 || hits[0] != possibleDrone);
         if (check)
         {
             // Move the drone if the hit array is empty. Otherwise, if the hit array's first element is the player,
             // order a follow.
-            if (hits.Length == 0 || hits[0].transform != craft.transform)
+            if (hits == null || hits.Length == 0 || hits[0] != craft.transform)
             {
-                var pos = Input.mousePosition;
-                pos.z = CameraScript.zLevel;
-                possibleDrone.GetComponent<Drone>().CommandMovement(Camera.main.ScreenToWorldPoint(pos));
+                possibleDrone.GetComponent<Drone>().CommandMovement(worldMovementVector);
                 targSys.SetTarget(null);
             }
-            else if (hits[0].transform == craft.transform) // Order a follow if this passes
+            else if (hits[0] == craft.transform) // Order a follow if this passes
             {
-                possibleDrone.GetComponent<AirCraftAI>().follow(craft.transform);
+                possibleDrone.GetComponent<Drone>().CommandFollowOwner();
                 targSys.SetTarget(null);
             }
         }
@@ -351,18 +380,20 @@ public class ReticleScript : MonoBehaviour
         }
     }
 
-    private void UpdateReticleHealths(Image shellImage, Image coreImage, ITargetable targetCraft, Image energyImage = null)
+    private void UpdateReticleHealths(Image shellImage, Image coreImage, Transform targetCraft, Image energyImage = null)
     {
-        if (targetCraft != null)
+        if (targetCraft != null && targetCraft.GetComponent<Entity>())
         {
+            var ent = targetCraft.GetComponent<Entity>();
+
             // show craft related information
             shellImage.enabled = coreImage.enabled = true;
-            shellImage.color = FactionManager.GetFactionColor(targetCraft.GetFaction());
+            shellImage.color = FactionManager.GetFactionColor(ent.GetFaction());
             coreImage.color = new Color(0.8F, 0.8F, 0.8F);
 
 
-            float[] targHealth = targetCraft.GetHealth(); // get the target current health
-            float[] targMax = targetCraft.GetMaxHealth(); // get the target max health
+            float[] targHealth = ent.GetHealth(); // get the target current health
+            float[] targMax = ent.GetMaxHealth(); // get the target max health
 
             shellImage.rectTransform.localScale = new Vector3(targHealth[0] / targMax[0], 1, 1);
             coreImage.rectTransform.localScale = new Vector3(targHealth[1] / targMax[1], 1, 1);
@@ -397,29 +428,29 @@ public class ReticleScript : MonoBehaviour
         }
     }
 
-    public void AddSecondaryTarget(Entity ent)
+    public void AddSecondaryTarget(Transform ent)
     {
         var success = targSys.AddSecondaryTarget(ent);
         if (success)
         {
-            var reticle = Instantiate(secondaryReticlePrefab, ent.transform.position, Quaternion.identity, transform.parent);
+            var reticle = Instantiate(secondaryReticlePrefab, ent.position, Quaternion.identity, transform.parent);
             reticle.transform.localScale = new Vector3(0, 0, 1);
-            AdjustReticleBounds(reticle.GetComponent<Image>(), ent.transform);
+            AdjustReticleBounds(reticle.GetComponent<Image>(), ent);
             secondariesByObject.Add((ent, reticle.transform));
             //SetSecondaryReticleTransform(ent, reticle.transform, secondariesByObject.Count);
             if (!DebugMode)
             {
-                quantityDisplay.AddEntityInfo(ent, this);
+                quantityDisplay.AddSecondaryInfo(ent, this);
             }
         }
     }
 
-    public int GetTargetIndex(Entity target)
+    public int GetTargetIndex(Transform target)
     {
         var x = 0;
         foreach (var tuple in secondariesByObject)
         {
-            if (tuple.Item1 == target)
+            if (tuple.Item1 && tuple.Item1 == target)
             {
                 return x;
             }
@@ -430,7 +461,7 @@ public class ReticleScript : MonoBehaviour
         return -1;
     }
 
-    public void RemoveSecondaryTarget(Entity entity)
+    public void RemoveSecondaryTarget(Transform entity)
     {
         foreach (var secondary in secondariesByObject)
         {
@@ -442,7 +473,7 @@ public class ReticleScript : MonoBehaviour
         }
     }
 
-    public void RemoveSecondaryTarget((Entity, Transform) tuple)
+    public void RemoveSecondaryTarget((Transform, Transform) tuple)
     {
         if (secondariesByObject.Contains(tuple))
         {

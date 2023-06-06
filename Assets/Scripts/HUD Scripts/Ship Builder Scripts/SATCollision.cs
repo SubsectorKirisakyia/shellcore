@@ -20,14 +20,23 @@ public static class SATCollision
         {
             return new Vector2[0];
         }
+        return GetPartVertices(part.info, part.image.sprite, shrinkFactor);
+    }
 
-        var rect = part.image.sprite.bounds;
+    public static Vector2[] GetPartVertices(EntityBlueprint.PartInfo info, Sprite partSprite = null, float shrinkFactor = 0f)
+    {
+        if (partSprite == null && ResourceManager.Instance.resourceExists(info.partID + "_sprite"))
+        {
+            partSprite = ResourceManager.GetAsset<Sprite>(info.partID + "_sprite");
+        }
+        if (partSprite == null) return new Vector2[4];
+        var rect = partSprite.bounds;
         rect.size *= 100;
         rect.Expand(0.001f);
 
-        float rot = part.info.rotation * Mathf.Deg2Rad;
+        float rot = info.rotation * Mathf.Deg2Rad;
 
-        Matrix4x4 matrix = new Matrix4x4()
+        Matrix4x4 matrix = new()
         {
             m00 = Mathf.Cos(rot),
             m01 = -Mathf.Sin(rot),
@@ -38,9 +47,9 @@ public static class SATCollision
         if (!shrinkFactor.Equals(0f))
             rect.Expand(shrinkFactor * rect.extents);
 
-        Vector2 center = part.info.location * 100f;
-        Vector2 right = new Vector2(rect.extents.x, 0f);
-        Vector2 up = new Vector2(0f, rect.extents.y);
+        Vector2 center = info.location * 100f;
+        Vector2 right = new(rect.extents.x, 0f);
+        Vector2 up = new(0f, rect.extents.y);
 
         Vector2[] points = new Vector2[4];
         points[0] = (Vector2)(matrix * ( -right - up)) + center;
@@ -49,6 +58,95 @@ public static class SATCollision
         points[3] = (Vector2)(matrix * ( -right + up)) + center;
 
         return points;
+    }
+
+    public static Vector2[] GetPartVertices(ShellPart part)
+    {
+        var partSprite = part.spriteRenderer.sprite;
+        var rect = partSprite.bounds;
+        var rot = part.transform.eulerAngles.z * Mathf.Deg2Rad;
+
+        Matrix4x4 matrix = new()
+        {
+            m00 = Mathf.Cos(rot),
+            m01 = -Mathf.Sin(rot),
+            m10 = Mathf.Sin(rot),
+            m11 = Mathf.Cos(rot),
+        };
+
+        Vector2 center = part.transform.position;
+        Vector2 right = new(rect.extents.x, 0f);
+        Vector2 up = new(0f, rect.extents.y);
+
+        Vector2[] points = new Vector2[4];
+        points[0] = (Vector2)(matrix * (-right - up)) + center;
+        points[1] = (Vector2)(matrix * (right - up)) + center;
+        points[2] = (Vector2)(matrix * (right + up)) + center;
+        points[3] = (Vector2)(matrix * (-right + up)) + center;
+
+        return points;
+    }
+
+    public static Vector2[] GetColliders(Entity entity, out Bounds bounds)
+    {
+        float rot = entity.transform.eulerAngles.z * Mathf.Deg2Rad;
+        Vector2 pos = entity.transform.position;
+
+        Matrix4x4 shipMatrix = new Matrix4x4()
+        {
+            m00 = Mathf.Cos(rot),
+            m01 = -Mathf.Sin(rot),
+            m10 = Mathf.Sin(rot),
+            m11 = Mathf.Cos(rot),
+            m03 = pos.x,
+            m13 = pos.y,
+        };
+
+        Vector2[] vertices = new Vector2[4 * (entity.parts.Count + 1)];
+
+        for (int i = 0; i < entity.parts.Count; i++)
+        {
+            var part = entity.parts[i];
+            Vector3 right = new(part.colliderExtents.x, 0f);
+            Vector3 up = new(0f, part.colliderExtents.y);
+
+            vertices[i * 4 + 0] = shipMatrix.MultiplyPoint3x4(part.colliderMatrix.MultiplyPoint3x4(-right - up + Vector3.forward));
+            vertices[i * 4 + 1] = shipMatrix.MultiplyPoint3x4(part.colliderMatrix.MultiplyPoint3x4( right - up + Vector3.forward));
+            vertices[i * 4 + 2] = shipMatrix.MultiplyPoint3x4(part.colliderMatrix.MultiplyPoint3x4( right + up + Vector3.forward));
+            vertices[i * 4 + 3] = shipMatrix.MultiplyPoint3x4(part.colliderMatrix.MultiplyPoint3x4(-right + up + Vector3.forward));
+        }
+
+        int offset = entity.parts.Count * 4;
+        float size = 0.5f;
+        vertices[offset + 0] = shipMatrix.MultiplyPoint3x4(new Vector3(-size, -size));
+        vertices[offset + 1] = shipMatrix.MultiplyPoint3x4(new Vector3( size, -size));
+        vertices[offset + 2] = shipMatrix.MultiplyPoint3x4(new Vector3( size,  size));
+        vertices[offset + 3] = shipMatrix.MultiplyPoint3x4(new Vector3(-size,  size));
+
+        float minX = vertices[0].x;
+        float minY = vertices[0].y;
+        float maxX = vertices[0].x;
+        float maxY = vertices[0].y;
+
+        for (int i = 0; i < vertices.Length; i++)
+        {
+            if (vertices[i].x < minX)
+                minX = vertices[i].x;
+            if (vertices[i].y < minY)
+                minY = vertices[i].y;
+            if (vertices[i].x > maxX)
+                maxX = vertices[i].x;
+            if (vertices[i].y > maxY)
+                maxY = vertices[i].y;
+        }
+
+        bounds = new Bounds
+        {
+            min = new Vector3(minX, minY),
+            max = new Vector3(maxX, maxY)
+        };
+
+        return vertices;
     }
 
     public static bool RectangleCollision(Vector2[] points1, Vector2[] points2)
@@ -108,5 +206,18 @@ public static class SATCollision
 
         // If no separating axis is found, shapes are colliding
         return true;
+    }
+
+    public static bool PointInRectangle(Vector2 r0, Vector2 r1, Vector2 r2, Vector2 r3, Vector2 point)
+    {
+        static float CrossProduct(Vector2 vertex1, Vector2 vertex2, Vector2 point)
+        {
+            return ((vertex2.x - vertex1.x) * (point.y - vertex1.y) - (point.x - vertex1.x) * (vertex2.y - vertex1.y));
+        }
+
+        return CrossProduct(r0, r1, point) > 0 
+            && CrossProduct(r1, r2, point) > 0 
+            && CrossProduct(r2, r3, point) > 0 
+            && CrossProduct(r3, r0, point) > 0;
     }
 }

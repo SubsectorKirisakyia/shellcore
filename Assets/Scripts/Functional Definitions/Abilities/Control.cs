@@ -4,7 +4,7 @@ using UnityEngine;
 public class Control : PassiveAbility
 {
     const float healthAddition = 200;
-    public const float damageAddition = 50;
+    public const float damageFactor = 0.05F;
     public const float baseControlFractionBoost = 0.2F;
     List<Entity> boosted = new List<Entity>();
 
@@ -54,7 +54,12 @@ public class Control : PassiveAbility
 
     void Enhance(Entity entity)
     {
-        if (entity.faction == Core.faction && entity != Core && !boosted.Contains(entity))
+        if (entity.faction == Core.faction && entity != Core && (Core is IOwner owner) 
+        && (entity is IOwnable ownable) 
+        && ownable.GetOwner() != null 
+        && !ownable.GetOwner().Equals(null) 
+        && ownable.GetOwner().Equals(owner) 
+        && !boosted.Contains(entity))
         {
             entity.ControlStacks += abilityTier;
             boosted.Add(entity);

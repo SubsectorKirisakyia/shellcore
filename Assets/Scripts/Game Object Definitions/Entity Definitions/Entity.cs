@@ -2,6 +2,8 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
+using Unity.Netcode;
+using static MasterNetworkAdapter;
 
 /// <summary>
 /// The base class of every "being" in the game.
@@ -27,9 +29,10 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
 
     protected List<Ability> abilities; // abilities
     public Rigidbody2D entityBody; // entity to modify with this script
-    protected Collider2D hitbox; // the hitbox of the entity (excluding extra parts)
     protected TargetingSystem targeter; // the TargetingSystem of the entity
     protected bool isInCombat; // whether the entity is in combat or not
+    protected bool isBusy; // whether the entity is busy or not
+    [SerializeField]
     protected bool isDead; // whether the entity is currently dead or not
     protected bool isWarpUninteractable; // whether the entity is uninteractable because it recently warped
     protected float busyTimer; // the time since the entity was last set to busy
@@ -40,9 +43,16 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
     protected GameObject explosionLinePrefab;
     protected GameObject respawnImplosionPrefab;
     protected GameObject deathExplosionPrefab;
-    protected List<ShellPart> parts; // List containing all parts of the entity
+    [HideInInspector]
+    public List<ShellPart> parts; // List containing all parts of the entity
     protected float[] currentHealth; // current health of the entity (index 0 is shell, index 1 is core, index 2 is energy)
+    public bool serverSyncHealthDirty = true;
+    protected Vector2[] _colliders;
+    protected Bounds _bounds;
+    protected Vector2 oldPos;
 
+    public bool husk;
+    [SerializeField]
     public float[] CurrentHealth
     {
         get { return (float[])currentHealth.Clone(); }
@@ -66,7 +76,24 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
     public string ID; // used in tasks
     protected float[] baseMaxHealth = new float[3];
     private int controlStacks;
+    private float TimeToDeath
+    {
+        get 
+        { 
+            var tier = 0;
+            if (blueprint && MasterNetworkAdapter.mode != NetworkMode.Off) 
+                tier = CoreUpgraderScript.GetCoreTier(blueprint.coreShellSpriteID);
+            return RESPAWN_TIMES[tier]; 
+        }
+    }
 
+    private static float[] RESPAWN_TIMES = new float[] {5, 7, 9, 11};
+
+    public void CancelDeath()
+    {
+        deathTimer = TimeToDeath;
+        isDead = false;
+    }
     public void HealToMax()
     {
         CurrentHealth = GetMaxHealth().Clone() as float[];
@@ -104,43 +131,72 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
         }
     }
 
+    public string blueprintString  {set; private get;}
 
     public delegate void EntityRangeCheckDelegate(float range);
     public EntityRangeCheckDelegate RangeCheckDelegate;
+    private bool rpcCalled = false;
+    public void AttemptCreateNetworkObject(bool isPlayer)
+    {
+        if (!networkAdapter && !rpcCalled) // should only happen to players, drones, towers, tanks, or turrets
+        {
+            string idToGrab = null;
+            if (this as Drone || this as Tower || this as Tank || this as Turret)
+            {
+                if (string.IsNullOrEmpty(ID)) ID = SectorManager.instance.GetFreeEntityID();
+                idToGrab = ID;
+            }
+
+            if (MasterNetworkAdapter.mode != NetworkMode.Server && this as PlayerCore)
+            {
+                MasterNetworkAdapter.instance.CreatePlayerServerRpc(MasterNetworkAdapter.playerName, SectorManager.GetNetworkSafeBlueprintString(MasterNetworkAdapter.blueprint), faction);
+            }
+            else if (MasterNetworkAdapter.mode != NetworkMode.Client)
+            {
+                MasterNetworkAdapter.instance.CreateNetworkObjectWrapper(MasterNetworkAdapter.playerName, blueprintString, idToGrab, false, faction, transform.position);
+            }
+            rpcCalled = true;
+        }
+        else if (networkAdapter && string.IsNullOrEmpty(networkAdapter.playerName))
+        {
+            networkAdapter.playerName = MasterNetworkAdapter.playerName;
+        }
+    }
+
+
+    private void UpdateRenderer(Renderer renderer)
+    {
+        var finalAlpha = IsInvisible ? FactionManager.IsAllied(PlayerCore.Instance ? PlayerCore.Instance.faction : 0, faction) ? 0.2f : 0f : FactionManager.GetFactionColor(faction).a;
+        if (renderer is SpriteRenderer spriteRenderer)
+        {
+            var c = spriteRenderer.color;
+            c.a = finalAlpha;
+            spriteRenderer.color = c;
+        }
+        if (renderer is LineRenderer lineRenderer)
+        {
+            var sc = lineRenderer.startColor;
+            var ec = lineRenderer.endColor;
+            sc.a = finalAlpha;
+            ec.a = finalAlpha;
+            lineRenderer.startColor = sc;
+            lineRenderer.endColor = ec;
+            var anim = renderer.GetComponentInChildren<MissileAnimationScript>();
+            if (anim)
+            {
+                var ac = anim.lineColor;
+                ac.a = finalAlpha;
+                anim.lineColor = ac;
+            }
+        }
+    }
 
     private void UpdateInvisibleGraphics()
     {
-        if (!IsInvisible)
+        Renderer[] renderers = GetComponentsInChildren<Renderer>(true);
+        for (int i = 0; i < renderers.Length; i++)
         {
-            SpriteRenderer[] renderers = GetComponentsInChildren<SpriteRenderer>(true);
-            for (int i = 0; i < renderers.Length; i++)
-            {
-                var c = renderers[i].color;
-                c.a = FactionManager.GetFactionColor(faction).a;
-                renderers[i].color = c;
-            }
-
-            Collider2D[] colliders = GetComponentsInChildren<Collider2D>(true);
-            for (int i = 0; i < colliders.Length; i++)
-            {
-                colliders[i].enabled = true;
-            }
-        }
-        else
-        {
-            SpriteRenderer[] renderers = GetComponentsInChildren<SpriteRenderer>(true);
-            for (int i = 0; i < renderers.Length; i++)
-            {
-                var c = renderers[i].color;
-                c.a = FactionManager.IsAllied(0, faction) ? 0.2f : 0f;
-                renderers[i].color = c;
-            }
-
-            Collider2D[] colliders = GetComponentsInChildren<Collider2D>(true);
-            for (int i = 0; i < colliders.Length; i++)
-            {
-                colliders[i].enabled = false;
-            }
+            UpdateRenderer(renderers[i]);
         }
     }
 
@@ -214,7 +270,7 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
     // Performs calculations based on current damage boost and control stats to determine final damage addition
     private void CalculateDamageBoost()
     {
-        damageAddition = controlStacks * Control.damageAddition + damageBoostStacks * DamageBoost.damageAddition;
+        damageFactor = controlStacks * Control.damageFactor + damageBoostStacks * DamageBoost.damageFactor;
     }
 
     private int stealths = 0;
@@ -222,7 +278,7 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
 
     public bool IsInvisible
     {
-        get { return StealthStacks > 0 || invisible; }
+        get { return StealthStacks > 0 || invisible || (this is PlayerCore && DevConsoleScript.spectateEnabled); }
         set
         {
             invisible = value;
@@ -230,10 +286,10 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
         }
     }
 
-    private float damageAddition = 0f;
-    public float GetDamageAddition()
+    private float damageFactor = 0f;
+    public float GetDamageFactor()
     {
-        return damageAddition;
+        return damageFactor;
     }
 
     [HideInInspector]
@@ -243,8 +299,6 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
     {
         get { return absorptions > 0; }
     }
-
-    bool collidersEnabled = true;
     public bool tractorSwitched = false;
 
     public SectorManager sectorMngr;
@@ -258,6 +312,16 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
         set { weaponGCD = value; }
     }
     private float weaponGCDTimer;
+
+    public float GetWeaponGCDTimer()
+    {
+        return weaponGCDTimer;
+    }
+
+    public void SetWeaponGCDTimer(float timer)
+    {
+        weaponGCDTimer = timer;
+    }
 
     public float weight;
 
@@ -316,13 +380,20 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
         }
         else
         {
+            if (dialogue.nodes != null && dialogue.nodes.Count > 0)
+            {
+                var tmp = dialogue.nodes[0];
+                tmp.textColor = FactionManager.GetFactionColor(faction);
+                dialogue.nodes[0] = tmp;
+            }
             DialogueSystem.StartDialogue(dialogue, this);
         }
     }
 
     public void UpdateInteractible()
     {
-        interactible = GetDialogue() && FactionManager.IsAllied(0, faction);
+        if (!SectorManager.instance.current) return;
+        interactible = GetDialogue() && PlayerCore.Instance && FactionManager.IsAllied(PlayerCore.Instance.faction, faction);
 
         // These are implications, not a biconditional; interactibility is not necessarily true/false if there are no
         // task overrides or pathing set up. Hence the if statements are needed here
@@ -376,6 +447,33 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
         return interactible;
     }
 
+    Dictionary<int, bool> weaponActivationStates = new Dictionary<int, bool>();
+
+    public void RememberWeaponActivationStates()
+    {
+        RememberWeaponActivationStates(weaponActivationStates);
+        if (networkAdapter && networkAdapter.weaponActivationStates != null)
+        {
+            RememberWeaponActivationStates(networkAdapter.weaponActivationStates);
+        }
+    }
+
+    protected void RememberWeaponActivationStates(Dictionary<int, bool> weaponActivationStates)
+    {
+        weaponActivationStates.Clear();
+        if (abilities == null) return;
+        foreach (var ability in abilities)
+        {
+            if (!ability) continue;
+            if (!(ability is WeaponAbility weapon)) continue;
+            if (weaponActivationStates.ContainsKey(weapon.GetID()))
+            {
+                continue;
+            }
+            weaponActivationStates.Add(weapon.GetID(), weapon.isEnabled);
+        }
+    }
+
     protected void AttemptAddComponents()
     {
         if (!GetComponent<SortingGroup>())
@@ -397,8 +495,6 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
         {
             GameObject childObject = new GameObject("Shell Sprite"); // create the child gameobject
             childObject.transform.SetParent(transform, false); // set to child
-            PolygonCollider2D collider = childObject.AddComponent<PolygonCollider2D>(); // add collider
-            collider.isTrigger = true; // do not allow "actual" collisions
             SpriteRenderer renderer = childObject.AddComponent<SpriteRenderer>(); // add renderer
             if (blueprint)
             {
@@ -414,12 +510,14 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
             part.detachible = false;
             shell = part;
             renderer.sortingLayerName = "Default";
+            renderer.color = FactionManager.GetFactionColor(faction); // needed to reset outpost colors
         }
         else
         {
             var renderer = transform.Find("Shell Sprite").GetComponent<SpriteRenderer>();
-            renderer.color = FactionManager.GetFactionColor(faction); // needed to reset outpost colors
+            transform.Find("Shell Sprite").GetComponent<ShellPart>().SetFaction(faction);
             renderer.sprite = ResourceManager.GetAsset<Sprite>(blueprint.coreShellSpriteID);
+            renderer.color = FactionManager.GetFactionColor(faction); // needed to reset outpost colors
             renderer.sortingLayerName = "Default";
         }
 
@@ -516,6 +614,7 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
         absorptions = 0;
 
         BuildEntity();
+        GetComponentInChildren<MinimapLockRotationScript>().Initialize(); // initialize the minimap dot
     }
 
     // guarantees abilities deactivate on stack frame
@@ -608,7 +707,7 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
         //For shellcores, create the tractor beam
         // Create shell parts
         SetUpParts(blueprint);
-
+        
         // Drone shell and core health penalty
         if (drone)
         {
@@ -642,9 +741,11 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
                 mainBullet.SetDestroyed(false);
                 abilities.Insert(0, mainBullet);
             }
+
+            ReflectAbilityActivation(gameObject.GetComponentInChildren<MainBullet>());
         }
 
-        // unique abilities for mini and worker drones here
+        // unique abilities for mini drones here
         if (drone)
         {
             switch (drone.type)
@@ -680,6 +781,7 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
         if (shellSprite)
         {
             parts.Add(shellSprite.GetComponent<ShellPart>());
+            UpdateColliders();
         }
 
         ConnectedTreeCreator();
@@ -702,7 +804,7 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
 
     // Wrapper for assembling core
     protected void SetUpParts(EntityBlueprint blueprint)
-    {
+    {   
         if (blueprint != null && blueprint.parts != null)
         {
             ResetHealths();
@@ -711,6 +813,7 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
                 SetUpPart(blueprint.parts[i]);
             }
         }
+        UpdateColliders();
     }
 
     public void AttachRandomPart() 
@@ -720,6 +823,7 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
         info.location = part.info.location;
         info.location += new Vector2(Random.Range(-0.1F, 0.1F), Random.Range(-0.1F, 0.1F));
         SetUpPart(info);
+        UpdateColliders();
     }
 
 
@@ -738,6 +842,19 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
     {
         blueprint.shellHealth.CopyTo(maxHealth, 0);
         blueprint.baseRegen.CopyTo(regenRate, 0);
+    }
+
+    private void ReflectAbilityActivation (WeaponAbility ab)
+    {
+        if (weaponActivationStates.ContainsKey(ab.GetID()))
+        {
+            ab.isEnabled = weaponActivationStates[ab.GetID()];
+        }
+
+        if (networkAdapter && networkAdapter.weaponActivationStates.ContainsKey(ab.GetID()))
+        {
+            ab.isEnabled = networkAdapter.weaponActivationStates[ab.GetID()];
+        }
     }
 
     protected ShellPart SetUpPart(EntityBlueprint.PartInfo part)
@@ -759,6 +876,7 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
         {
             // add weapon diversity
             ab.type = DroneUtilities.GetDiversityTypeByEntity(this);
+            ReflectAbilityActivation(ab);
         }
 
         partObject.transform.localEulerAngles = new Vector3(0, 0, part.rotation);
@@ -772,6 +890,17 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
         weight += partWeight;
         maxHealth[0] += partBlueprint.health / 2;
         maxHealth[1] += partBlueprint.health / 4;
+
+        var rot = part.rotation * Mathf.Deg2Rad;
+        shellPart.colliderMatrix = new()
+        {
+            m00 = Mathf.Cos (rot),
+            m01 = -Mathf.Sin(rot),
+            m10 = Mathf.Sin (rot),
+            m11 = Mathf.Cos (rot),
+            m02 = part.location.x,
+            m12 = part.location.y,
+        };
 
         string shooterID = AbilityUtilities.GetShooterByID(part.abilityID, part.secondaryData);
         // Add shooter
@@ -813,20 +942,12 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
         var coreRenderer = GetComponent<SpriteRenderer>();
         if (coreRenderer) coreRenderer.sortingOrder = ++sortingOrder;
 
-        parts.Add(partObject.GetComponent<ShellPart>());
+        parts.Add(shellPart);
         if (partObject.GetComponent<Ability>())
         {
             abilities.Insert(0, partObject.GetComponent<Ability>());
         }
-
-        // Disable collider if no sprite
-        if (!(partObject.GetComponent<SpriteRenderer>() && partObject.GetComponent<SpriteRenderer>().sprite)
-            && partObject.GetComponent<Collider2D>() && !partObject.GetComponent<Harvester>())
-        {
-            partObject.GetComponent<Collider2D>().enabled = false;
-        }
-
-        return partObject.GetComponent<ShellPart>();
+        return shellPart;
     }
 
 
@@ -860,18 +981,23 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
     {
         // set death, interactibility and immobility
         IsInvisible = false;
-        Collider2D[] colliders = GetComponentsInChildren<Collider2D>(true);
-        for (int i = 0; i < colliders.Length; i++)
-        {
-            colliders[i].enabled = true;
-        }
-
+        serverSyncHealthDirty = true;
+        RememberWeaponActivationStates();
         foreach (var ability in abilities)
         {
             if (ability)
             {
                 ability.SetDestroyed(true);
             }
+        }
+
+        if (MasterNetworkAdapter.mode != MasterNetworkAdapter.NetworkMode.Off && NetworkManager.Singleton.IsServer && networkAdapter)
+        {
+            networkAdapter.serverReady.Value = false;
+        }
+        if (MasterNetworkAdapter.mode != MasterNetworkAdapter.NetworkMode.Off && MasterNetworkAdapter.lettingServerDecide && networkAdapter)
+        {
+            networkAdapter.clientReady = false;
         }
 
         interactible = false;
@@ -888,7 +1014,7 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
         {
             // extract non-shell parts
             var selectedParts = parts.FindAll(p => p != shell);
-            if (selectedParts.Count > 0)
+            if (selectedParts.Count > 0  && MasterNetworkAdapter.mode == MasterNetworkAdapter.NetworkMode.Off)
             {
                 foreach (var part in selectedParts)
                 {
@@ -922,12 +1048,9 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
             }
         }
 
-        if (OnEntityDeath != null)
-        {
-            OnEntityDeath.Invoke(this, lastDamagedBy);
-        }
+        OnEntityDeath?.Invoke(this, lastDamagedBy);
 
-        if (BZM != null)
+        if (BZM != null && BZM.IsTarget(this))
         {
             BZM.UpdateCounters();
         }
@@ -992,8 +1115,25 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
             AIData.vendors.Remove(vendor);
         }
 
-        SectorManager.instance.RemoveObject(ID, gameObject);
+        if (SectorManager.instance)
+            SectorManager.instance.RemoveObject(ID, gameObject);
+
+        RememberWeaponActivationStates();
+        if (MasterNetworkAdapter.mode != NetworkMode.Client && networkAdapter && !networkAdapter.isPlayer.Value)
+        {
+            if(networkAdapter.GetComponent<NetworkObject>().IsSpawned)
+                networkAdapter.GetComponent<NetworkObject>().Despawn();
+            Destroy(networkAdapter.gameObject);
+        }
+
+        if (MasterNetworkAdapter.mode != MasterNetworkAdapter.NetworkMode.Off)
+        {
+            if (networkAdapter) networkAdapter.playerNameAdded = false;
+            ProximityInteractScript.instance.RemovePlayerName(this);
+        }
+        
     }
+
 
     virtual protected void Start()
     {
@@ -1005,7 +1145,13 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
         //transform.rotation = Quaternion.identity; // reset rotation
         GetComponent<SpriteRenderer>().enabled = true; // enable sprite renderer
         busyTimer = 0; // reset busy timer
+        if (SectorManager.instance && SectorManager.instance.current &&
+        SectorManager.instance.current.type == Sector.SectorType.BattleZone && ((new List<string>(SectorManager.instance.current.targets)).Contains(ID) || (networkAdapter != null && networkAdapter.isPlayer.Value)) )
+        {
+            SectorManager.instance.AddTarget(this);
+        }
         initialized = true;
+        if (MasterNetworkAdapter.mode != MasterNetworkAdapter.NetworkMode.Off && !MasterNetworkAdapter.lettingServerDecide && networkAdapter) networkAdapter.serverReady.Value = true;
     }
 
     protected void ActivatePassives()
@@ -1021,9 +1167,14 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
 
     protected virtual void Update()
     {
-        if (initialized)
+        if (MasterNetworkAdapter.mode != NetworkMode.Off && MasterNetworkAdapter.mode != NetworkMode.Client)
+            AttemptCreateNetworkObject(this as PlayerCore);
+        if (!initialized) return;
+        TickState();
+        if ((oldPos - (Vector2)transform.position).sqrMagnitude > CollisionManager.movementThreshold)
         {
-            TickState(); // tick state
+            oldPos = transform.position;
+            UpdateColliders();
         }
     }
 
@@ -1035,6 +1186,7 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
     /// <param name="maxHealth">the maximum value this health can have</param>
     protected void RegenHealth(ref float currentHealth, float regenRate, float maxHealth)
     {
+        var oldCurrentHealth = currentHealth;
         if (currentHealth + (regenRate * Time.deltaTime) > maxHealth) // if it would overheal
         {
             currentHealth = maxHealth; // set current health to max health
@@ -1043,6 +1195,8 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
         {
             currentHealth += regenRate * Time.deltaTime; // add regenerated health
         }
+
+        if (oldCurrentHealth != currentHealth) serverSyncHealthDirty = true;
     }
 
     /// <summary>
@@ -1092,13 +1246,21 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
         }
     }
 
+    public bool dirty;
+    public EntityNetworkAdapter networkAdapter;
+
+    public List<ShellPart> NetworkGetParts()
+    {
+        return parts;
+    }
 
     /// <summary>
     /// Used to update the state of the craft- regeneration, timers, etc
     /// </summary>
     protected void TickState()
     {
-        DeathHandler();
+        if (!MasterNetworkAdapter.lettingServerDecide || (!networkAdapter || networkAdapter.clientReady))
+            DeathHandler();
         UpdateInteractible();
         UpdateAuras();
         if (isDead) // if the craft is dead
@@ -1109,35 +1271,47 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
             {
                 if (this is PlayerCore player && (deathTimer > 2))
                 {
-                    player.alerter.showMessage($"Respawning in {(5 - (int)deathTimer)} second"
-                                               + ((5 - deathTimer) > 1 ? "s." : "."));
+                    player.alerter.showMessage($"Respawning in {(TimeToDeath - (int)deathTimer)} second"
+                                               + ((TimeToDeath - deathTimer) > 1 ? "s." : "."));
                 }
             }
 
-            if (deathTimer >= 5F)
+            if (deathTimer >= TimeToDeath)
             {
                 if (this is PlayerCore player)
                 {
                     player.alerter.showMessage("");
                 }
 
-                PostDeath();
+                var BZM = SectorManager.instance?.GetComponent<BattleZoneManager>();
+                if ((MasterNetworkAdapter.mode == MasterNetworkAdapter.NetworkMode.Off || (!MasterNetworkAdapter.lettingServerDecide && (!BZM || BZM.playing)) || (!networkAdapter || networkAdapter.serverReady.Value)))
+                    PostDeath();
             }
         }
         else
         {
             // not dead, continue normal state changing
             // regenerate
-            if (blueprint.intendedType != EntityBlueprint.IntendedType.Tower)
+            if (!lettingServerDecide && blueprint.intendedType != EntityBlueprint.IntendedType.Tower)
             {
-                RegenHealth(ref currentHealth[0], HealAuraStacks > 0 ? regenRate[0] * 20F : regenRate[0], maxHealth[0]);
-                RegenHealth(ref currentHealth[1], HealAuraStacks > 0 ? regenRate[1] * 20F : regenRate[1], maxHealth[1]);
-                RegenHealth(ref currentHealth[2], EnergyAuraStacks > 0 ? regenRate[2] * 50F : regenRate[2], maxHealth[2]);
+                RegenHealth(ref currentHealth[0], HealAuraStacks > 0 ? regenRate[0] * 10F : regenRate[0], maxHealth[0]);
+                RegenHealth(ref currentHealth[1], HealAuraStacks > 0 ? regenRate[1] * 10F : regenRate[1], maxHealth[1]);
+                RegenHealth(ref currentHealth[2], EnergyAuraStacks > 0 ? regenRate[2] * 20F : regenRate[2], maxHealth[2]);
+
+                if (weaponGCDTimer < weaponGCD)
+                {
+                    weaponGCDTimer += Time.deltaTime; // tick GCD timer
+                }
             }
 
-            if (weaponGCDTimer < weaponGCD)
+            // check if busy state changing is due
+            if (busyTimer > 5)
             {
-                weaponGCDTimer += Time.deltaTime; // tick GCD timer
+                isBusy = false; // change state if it is
+            }
+            else
+            {
+                busyTimer += Time.deltaTime; // otherwise continue ticking timer
             }
 
             // check if combat state changing is due
@@ -1165,6 +1339,12 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
                 RangeCheckDelegate.Invoke(Vector2.SqrMagnitude(PlayerCore.Instance.transform.position - transform.position));
             }
         }
+
+        if (serverSyncHealthDirty && !MasterNetworkAdapter.lettingServerDecide && networkAdapter)
+        {
+            if (!GetIsDead()) serverSyncHealthDirty = false;
+            networkAdapter.UpdateHealthClientRpc(currentHealth[0], currentHealth[1], currentHealth[2]);
+        }
     }
 
     /// <summary>
@@ -1188,6 +1368,8 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
 
     public virtual void RemovePart(ShellPart part)
     {
+        if (!part) return;
+        var lettingServerDecide = MasterNetworkAdapter.lettingServerDecide;
         if (part.GetComponent<Ability>())
         {
             part.GetComponent<Ability>().SetDestroyed(true);
@@ -1200,9 +1382,18 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
             craft.CalculatePhysicsConstants();
         }
 
-        Domino(part);
+        if (!lettingServerDecide)
+        {
+            Domino(part);
+        }
+
         part.Detach();
+        if (NetworkManager.Singleton && NetworkManager.Singleton.IsServer && networkAdapter)
+        {
+            networkAdapter.DetachPartClientRpc(part.info.location);
+        }
         parts.Remove(part);
+        UpdateColliders();
     }
 
 
@@ -1260,6 +1451,13 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
         return currentHealth;
     }
 
+    public void SyncHealth(float shell, float core, float energy)
+    {
+        currentHealth[0] = shell;
+        currentHealth[1] = core;
+        currentHealth[2] = energy;
+    }
+
     /// <summary>
     /// Get the maximum health array of the craft
     /// </summary>
@@ -1274,6 +1472,7 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
     /// </summary>
     public virtual float TakeShellDamage(float amount, float shellPiercingFactor, Entity lastDamagedBy)
     {
+        serverSyncHealthDirty = true;
         if (amount != 0 && ReticleScript.instance && ReticleScript.instance.DebugMode)
         {
             Debug.Log($"Damage: {amount} (f {lastDamagedBy?.faction} -> {faction})");
@@ -1285,10 +1484,15 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
             return 0f;
         }
 
-        // counter drone fighting another drone, multiply damage accordingly
         if (this as Drone && lastDamagedBy is Drone drone && drone.type == DroneType.Counter)
         {
-            amount *= 1.75F;
+            amount *= 5F;
+            shellPiercingFactor = 1;
+        }
+        // if being attacked by another drone as a counter drone, drop damage accordingly
+        if (this as Drone && lastDamagedBy is Drone && (this as Drone).type == DroneType.Counter)
+        {
+            amount /= 5F;
         }
 
         if (lastDamagedBy != this && amount > 0)
@@ -1483,25 +1687,11 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
         return IsInvisible;
     }
 
-    public void ToggleColliders(bool enable)
-    {
-        if (enable != collidersEnabled)
-        {
-            foreach (Collider2D c in GetComponentsInChildren<Collider2D>())
-            {
-                if (c.gameObject.name != "Shell Sprite")
-                {
-                    c.enabled = enable;
-                }
-            }
-
-            collidersEnabled = enable;
-        }
-    }
-
     // Used by "dumb" stations, that just use their abilities whenever possible
     protected void TickAbilitiesAsStation()
     {
+        if (MasterNetworkAdapter.mode == NetworkMode.Client) return;
+
         var enemyTargetFound = SectorManager.instance?.current?.type != Sector.SectorType.BattleZone;
         if (!enemyTargetFound && BattleZoneManager.getTargets() != null && BattleZoneManager.getTargets().Length > 0)
         {
@@ -1523,5 +1713,25 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
                 active.Activate();
             }
         }
+    }
+
+    protected void UpdateColliders()
+    {
+        _colliders = SATCollision.GetColliders(this, out var bounds);
+        _bounds = bounds;
+    }
+
+    public Vector2[] GetColliders()
+    {
+        if (_colliders == null)
+            UpdateColliders();
+        return _colliders;
+    }
+
+    public Bounds GetBounds()
+    {
+        if (_bounds == null)
+            UpdateColliders();
+        return _bounds;
     }
 }

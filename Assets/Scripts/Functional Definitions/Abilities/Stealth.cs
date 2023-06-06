@@ -34,6 +34,13 @@ public class Stealth : ActiveAbility
         }
     }
 
+    // What immediately happens when a weapon is fired
+    public override void ActivationCosmetic(Vector3 targetPos)
+    {
+        SetActivationState();
+        Execute();
+    }
+
     /// <summary>
     /// Makes the craft invisible
     /// </summary>
@@ -43,7 +50,6 @@ public class Stealth : ActiveAbility
         {
             // change visibility
             craft.StealthStacks++;
-
             AudioManager.PlayClipByID("clip_activateability", transform.position);
             base.Execute();
         }

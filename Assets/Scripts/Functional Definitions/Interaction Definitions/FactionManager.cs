@@ -10,6 +10,14 @@ public class FactionManager : MonoBehaviour
 
     int factionCount = 0;
 
+    public static void RemoveExtraFactions()
+    {
+        if (!instance) return;
+        ResourceManager.Instance.RemoveExtraFactions();
+        instance.factions = defaultFactions.ToArray();
+        instance.factionCount = instance.factions.Length;
+    }
+
     public static void UpdateFactions()
     {
         if (instance)
@@ -78,6 +86,18 @@ public class FactionManager : MonoBehaviour
         return true;
     }
 
+    public static List<int> GetAllAlliedFactions(int faction)
+    {
+        var fac = new List<int>();
+        if (!instance) return fac;
+        foreach (var f in instance.factions)
+        {
+            if (IsAllied(f.ID, faction))
+                fac.Add(f.ID);
+        }
+        return fac;
+    }
+
     public static bool FactionExists(int faction)
     {
         if (faction < 0 || faction >= 32 || instance.factions.Length <= faction)
@@ -95,6 +115,7 @@ public class FactionManager : MonoBehaviour
 
     public static Color GetFactionColor(int faction)
     {
+        if (faction < 0) Debug.LogError("Uninitialized faction!");
         return instance.factions[faction].color;
     }
 

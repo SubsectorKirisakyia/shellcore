@@ -43,6 +43,16 @@ public class TargetingSystem : ITargetingSystem
     public void SetTarget(Transform target)
     {
         this.target = target; // set target
+        if (!MasterNetworkAdapter.lettingServerDecide 
+        || !(GetEntity() as PlayerCore) || !GetEntity().networkAdapter) return;
+        if (target == null)
+        {
+            GetEntity().networkAdapter.RequestTargetChangeServerRpc(ulong.MaxValue);
+            return; 
+        }
+        var ent = target.GetComponent<Entity>();
+        if (!ent || !ent.networkAdapter) return;
+        GetEntity().networkAdapter.RequestTargetChangeServerRpc(ent.networkAdapter.NetworkObjectId); 
     }
 
     /// <summary>
@@ -55,9 +65,9 @@ public class TargetingSystem : ITargetingSystem
         return target; // get target
     }
 
-    private List<Entity> secondaryTargets = new List<Entity>();
+    private List<Transform> secondaryTargets = new List<Transform>();
 
-    public bool AddSecondaryTarget(Entity ent)
+    public bool AddSecondaryTarget(Transform ent)
     {
         if (!secondaryTargets.Contains(ent))
         {
@@ -69,7 +79,7 @@ public class TargetingSystem : ITargetingSystem
         return false;
     }
 
-    public void RemoveSecondaryTarget(Entity ent)
+    public void RemoveSecondaryTarget(Transform ent)
     {
         if (secondaryTargets.Contains(ent))
         {
@@ -77,7 +87,7 @@ public class TargetingSystem : ITargetingSystem
         }
     }
 
-    public List<Entity> GetSecondaryTargets()
+    public List<Transform> GetSecondaryTargets()
     {
         return secondaryTargets;
     }

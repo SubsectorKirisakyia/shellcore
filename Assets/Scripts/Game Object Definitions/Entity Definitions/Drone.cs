@@ -4,6 +4,7 @@ using UnityEngine;
 public interface IOwnable
 {
     void SetOwner(IOwner owner);
+    IOwner GetOwner();
 }
 
 public class Drone : AirCraft, IOwnable
@@ -13,6 +14,16 @@ public class Drone : AirCraft, IOwnable
     private float initialzangle;
     public DroneType type;
     public Path path;
+    
+    private float aiReenableTime;
+
+    public void DisableAITemporarily(float timeToEnableAt)
+    {
+        if (!ai) return;
+        ai.enabled = false;
+        aiReenableTime = timeToEnableAt;
+    }
+
 
     public IOwner GetOwner()
     {
@@ -156,13 +167,29 @@ public class Drone : AirCraft, IOwnable
 
     public void CommandMovement(Vector3 pos)
     {
+        if (MasterNetworkAdapter.mode == MasterNetworkAdapter.NetworkMode.Client && networkAdapter)
+        {
+            networkAdapter.CommandMovementServerRpc(pos);
+            return;
+        }
         ai.moveToPosition(pos);
+    }
+
+    public void CommandFollowOwner()
+    {
+        if (MasterNetworkAdapter.mode == MasterNetworkAdapter.NetworkMode.Client && networkAdapter)
+        {
+            networkAdapter.CommandFollowOwnerServerRpc();
+            return;
+        }
+        ai.follow(owner.GetTransform());
     }
 
     private AirCraftAI.AIMode lastMode;
 
     protected override void Update()
     {
+        if (Time.time > aiReenableTime && ai) ai.enabled = true;
         base.Update();
         if (!draggable || (draggable && !draggable.dragging))
         {

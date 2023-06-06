@@ -63,6 +63,11 @@ namespace NodeEditorFramework.Standard
             if (sectorName == "" || freeSector)
             {
                 (Canvas.Traversal as MissionTraverser).traverserLimiterDelegate = null;
+                // draw objectives
+                if (TaskManager.objectiveLocations[(Canvas as QuestCanvas).missionName].Contains(objectiveLocation))
+                {
+                    TaskManager.objectiveLocations[(Canvas as QuestCanvas).missionName].Remove(objectiveLocation);
+                }
                 return 0;
             }
             else
@@ -100,24 +105,30 @@ namespace NodeEditorFramework.Standard
             }
         }
 
+        TaskManager.ObjectiveLocation objectiveLocation;
 
         void TryAddObjective()
         {
-            if (!TaskManager.objectiveLocations.ContainsKey((Canvas as QuestCanvas).missionName))
+            if (TaskManager.objectiveLocations == null 
+                || !TaskManager.objectiveLocations.ContainsKey((Canvas as QuestCanvas).missionName) 
+                || TaskManager.objectiveLocations[(Canvas as QuestCanvas).missionName] == null)
             {
-                Debug.LogError($"Task Manager does not contain an objective list for mission {(Canvas as QuestCanvas).missionName}");
+                Debug.LogWarning($"Task Manager does not contain an objective list for mission {(Canvas as QuestCanvas).missionName}");
                 return;
             }
             var sect = SectorManager.GetSectorByName(sectorName);
+            if (!sect) return;
             var bounds = sect.bounds;
             TaskManager.objectiveLocations[(Canvas as QuestCanvas).missionName].Clear();
-            TaskManager.objectiveLocations[(Canvas as QuestCanvas).missionName].Add(new TaskManager.ObjectiveLocation
+            objectiveLocation = new TaskManager.ObjectiveLocation
             (
                 new Vector2(bounds.x + bounds.w / 2, bounds.y - bounds.h / 2),
                 true,
                 (Canvas as QuestCanvas).missionName,
                 sect.dimension
-            ));
+            );
+
+            TaskManager.objectiveLocations[(Canvas as QuestCanvas).missionName].Add(objectiveLocation);
             TaskManager.DrawObjectiveLocations();
         }
     }

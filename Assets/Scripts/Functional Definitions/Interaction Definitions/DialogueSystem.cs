@@ -179,8 +179,22 @@ public class DialogueSystem : MonoBehaviour, IDialogueOverrideHandler
         }
     }
 
+    public bool IsVoting()
+    {
+        return voteTimeLeft > 0;
+    }
+
     private void Update()
     {
+        if (voteTimeLeft > 0)
+        {
+            voteTimeLeft -= Time.deltaTime;
+            if (voteBoxTitle) voteBoxTitle.GetComponentInChildren<Text>().text = "SELECT MAP (" + Mathf.CeilToInt(voteTimeLeft) + "s)";
+            if (voteTimeLeft <= 0)
+            {
+                FinishVote();
+            }
+        }
         if (window && speakerPos != null && player &&
             ((player.transform.position - ((Vector3)speakerPos)).sqrMagnitude > 100 || player.GetIsDead() 
             || (speaker && speaker.GetIsDead())) && !isInCutscene)
@@ -207,6 +221,11 @@ public class DialogueSystem : MonoBehaviour, IDialogueOverrideHandler
     }
 
     private Entity speaker;
+    public bool IsSpeaking()
+    {
+        return speaker && !speaker.GetIsDead();
+    }
+
     public static void StartDialogue(Dialogue dialogue, IInteractable speaker = null)
     {
         Instance.startDialogue(dialogue, speaker);
@@ -331,6 +350,72 @@ public class DialogueSystem : MonoBehaviour, IDialogueOverrideHandler
         Instance.showBattleResults(victory);
     }
 
+
+    private Transform voteBox;
+    private Transform voteBoxTitle;
+    public GameObject voteBoxPrefab;
+    public List<int> voteNumbers = new List<int>();
+    private List<Button> voteButtons = new List<Button>();
+    private List<string> voteOptions = new List<string>();
+    public Dictionary<ulong, int> votesById = new Dictionary<ulong, int>();
+    private float voteTimeLeft = 0;
+    private static float VOTE_TIME = 10;
+    private void FinishVote()
+    {
+        if (MasterNetworkAdapter.mode != MasterNetworkAdapter.NetworkMode.Off)
+            BattleZoneManager.END_CHECK_TIMER = Time.time + 1;
+        if (window)
+        {
+            window.CloseUI();
+        }
+        if (MasterNetworkAdapter.mode == MasterNetworkAdapter.NetworkMode.Client)
+        {
+            return;
+        }
+
+        var maxIndex = 0;
+        for (int i = 0; i < voteNumbers.Count; i++)
+        {
+            if (voteNumbers[i] > voteNumbers[maxIndex])
+            {
+                maxIndex = i;
+            }
+        }
+
+        SectorManager.instance.ReloadSector(maxIndex);
+        MasterNetworkAdapter.instance.ReloadSectorClientRpc(maxIndex);
+    }
+
+    public void RefreshButtons()
+    {
+        if (voteButtons == null) return;
+        for (int i = 0; i < voteButtons.Count; i++)
+        {
+            var box = voteButtons[i];
+            if (!box || !box.GetComponentInChildren<Text>()) continue;
+            box.GetComponentInChildren<Text>().text = voteOptions[i] + " (" + voteNumbers[i] + ")";
+        }
+    }
+
+    private void StartVote()
+    {
+        voteNumbers.Clear();
+        voteButtons.Clear();
+        votesById.Clear();
+        voteOptions.Clear();
+        voteTimeLeft = VOTE_TIME;
+    }
+
+    public void StartSectorVote()
+    {
+        StartVote();
+        foreach (var sect in SectorManager.instance.sectors)
+        {
+            voteOptions.Add(sect.sectorName);
+            voteNumbers.Add(0);
+        }
+    }
+
     private void showBattleResults(bool victory)
     {
         if (window)
@@ -342,6 +427,32 @@ public class DialogueSystem : MonoBehaviour, IDialogueOverrideHandler
 
         //create window
         window = Instantiate(battleResultsBoxPrefab).GetComponentInChildren<GUIWindowScripts>();
+        voteBox = window.transform.Find("Background/Vote/Scroll View/Viewport/Content");
+        voteBoxTitle = window.transform.Find("Background/Vote/Vote Title");
+
+        if (MasterNetworkAdapter.mode != MasterNetworkAdapter.NetworkMode.Off)
+        {
+            StartSectorVote();
+            for (int i = 0; i < SectorManager.instance.sectors.Count; i++)
+            {
+                int a = i;
+                var sect = SectorManager.instance.sectors[i];
+                var box = Instantiate(voteBoxPrefab, voteBox);
+                voteButtons.Add(box.GetComponentInChildren<Button>());
+                box.GetComponentInChildren<Button>().onClick.AddListener(() => {
+                    voteButtons.ForEach(b => {b.GetComponentInChildren<Image>().color = Color.white;});
+                    box.GetComponentInChildren<Image>().color = Color.green;
+                    MasterNetworkAdapter.instance.RequestVoteServerRpc(a);
+                    RefreshButtons();
+                });
+            }
+            RefreshButtons();
+        }
+        else
+        {
+            window.transform.Find("Background/Vote").gameObject.SetActive(false);
+        }
+        
         window.DestroyOnClose = true;
         window.Activate();
         window.transform.SetSiblingIndex(0);
@@ -689,7 +800,7 @@ public class DialogueSystem : MonoBehaviour, IDialogueOverrideHandler
                 break;
             case Dialogue.DialogueAction.Outpost:
                 endDialogue(0, false);
-                if ((speaker as IVendor).NeedsSameFaction() && (speaker as IVendor).GetFaction() != player.faction)
+                if ((speaker as IVendor).NeedsAlliedFaction() && !FactionManager.IsAllied((speaker as IVendor).GetFaction(), player.faction))
                 {
                     return;
                 }
