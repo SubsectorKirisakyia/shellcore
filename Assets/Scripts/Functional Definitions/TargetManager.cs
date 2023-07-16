@@ -110,6 +110,8 @@ public class TargetManager : MonoBehaviour
                     continue;
                 if (!FactionManager.FactionExists(j))
                     continue;
+
+                if (j >= allTargets.Length) continue;
                 allTargets[j][allCount[j]++] = ent;
 
                 if ((ent.GetTerrain() & Entity.TerrainType.Air) != 0)
@@ -237,7 +239,7 @@ public class TargetManager : MonoBehaviour
         for (int i = 0; i < targetCount; i++) // go through all entities and check them for several factors
         {
             // check if the target's category matches
-            if (ec == Entity.EntityCategory.All || targets[i].category == ec)
+            if (ec == Entity.EntityCategory.All || targets[i].Category == ec)
             {
                 // check if it is the closest entity that passed the checks so far
                 float sqrD = Vector3.SqrMagnitude(pos - targets[i].transform.position);

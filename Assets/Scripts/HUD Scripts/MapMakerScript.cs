@@ -108,11 +108,10 @@ public class MapMakerScript : MonoBehaviour, IPointerDownHandler, IPointerClickH
     private void CreateLandPlatforms(Sector sector, LandPlatformGenerator lpg, Image sect)
     {
         // set up land platforms
+        GameObject prefab = ResourceManager.GetAsset<GameObject>(LandPlatformGenerator.prefabNames[0]);
+        float tileSize = prefab.GetComponent<SpriteRenderer>().bounds.size.x;
         if (sector.platforms == null && sector.platformData.Length > 0)
         {
-            GameObject prefab = ResourceManager.GetAsset<GameObject>(LandPlatformGenerator.prefabNames[0]);
-            float tileSize = prefab.GetComponent<SpriteRenderer>().bounds.size.x;
-            lpg.tileSize = tileSize;
 
             var cols = sector.bounds.h / (int)tileSize;
             var rows = sector.bounds.w / (int)tileSize;
@@ -124,8 +123,6 @@ public class MapMakerScript : MonoBehaviour, IPointerDownHandler, IPointerClickH
                 x = center.x - tileSize * (rows - 1) / 2F,
                 y = center.y + tileSize * (cols - 1) / 2F
             };
-
-            lpg.Offset = offset;
 
             sector.platforms = new GroundPlatform[sector.platformData.Length];
             for (int i = 0; i < sector.platformData.Length; i++)
@@ -140,19 +137,18 @@ public class MapMakerScript : MonoBehaviour, IPointerDownHandler, IPointerClickH
             var platforms = sector.platforms;
             foreach (var platform in platforms)
             {
-                float tileSize = LandPlatformGenerator.Instance.tileSize / zoomoutFactor;
-
+                float finalTileSize = tileSize / zoomoutFactor;
                 List<Vector2> vertices = new List<Vector2>();
                 for (int i = 0; i < platform.tiles.Count; i++)
                 {
                     var tile = platform.tiles[i];
 
-                    var pos = new Vector2(tile.pos.x, -tile.pos.y - 1f) * tileSize;
+                    var pos = new Vector2(tile.pos.x, -tile.pos.y - 1f) * finalTileSize;
 
-                    vertices.Add(new Vector3(pos.x + tileSize, pos.y + tileSize));
-                    vertices.Add(new Vector3(pos.x, pos.y + tileSize));
+                    vertices.Add(new Vector3(pos.x + finalTileSize, pos.y + finalTileSize));
+                    vertices.Add(new Vector3(pos.x, pos.y + finalTileSize));
                     vertices.Add(new Vector3(pos.x, pos.y));
-                    vertices.Add(new Vector3(pos.x + tileSize, pos.y));
+                    vertices.Add(new Vector3(pos.x + finalTileSize, pos.y));
                 }
 
                 if (vertices.Count > 0)
@@ -305,7 +301,7 @@ public class MapMakerScript : MonoBehaviour, IPointerDownHandler, IPointerClickH
     }
 
     IEnumerator DrawCoroutine(List<Sector> sectors, int dimension, bool displayStations)
-    {        
+    {
         if (player)
         {
             sectors = new List<Sector>(sectors.ToArray());
@@ -460,7 +456,7 @@ public class MapMakerScript : MonoBehaviour, IPointerDownHandler, IPointerClickH
 
     void Update()
     {
-        if (playerCore && playerCore.cursave.sectorsSeen.Count > sectorCount)
+        if (playerCore && playerCore.cursave.sectorsSeen.Count > sectorCount && !mapVisibleCheatEnabled)
         {
             sectorCount = playerCore.cursave.sectorsSeen.Count;
             Destroy();

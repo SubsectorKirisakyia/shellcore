@@ -13,12 +13,16 @@ public class PartIndexInventoryButton : ShipBuilderInventoryBase, IPointerEnterH
     public PartDisplayBase partDisplay;
     public static List<string> partMarkerSectorNames = new List<string>();
 
+    public void UpdateButton()
+    {
+        Start();
+    }
+
     protected override void Start()
     {
         base.Start();
         val.enabled = false;
         isShiny.enabled = displayShiny;
-
         switch (status)
         {
             case PartIndexScript.PartStatus.Unseen:
@@ -31,13 +35,22 @@ public class PartIndexInventoryButton : ShipBuilderInventoryBase, IPointerEnterH
                 break;
             case PartIndexScript.PartStatus.Seen:
                 image.color = Color.gray;
-                if (shooter)
+                if (shooter && shooter.sprite)
                 {
+                    shooter.enabled = true;
                     shooter.color = Color.gray;
                 }
 
                 break;
-            default:
+            case PartIndexScript.PartStatus.Obtained:
+                if (PlayerCore.Instance)
+                    image.color = FactionManager.GetFactionColor(PlayerCore.Instance.faction);
+                if (shooter && shooter.sprite)
+                {
+                    shooter.enabled = true;
+                    shooter.color = image.color;
+                }
+
                 break;
         }
     }
@@ -49,12 +62,19 @@ public class PartIndexInventoryButton : ShipBuilderInventoryBase, IPointerEnterH
         {
             var textComponent = infoBox.GetComponentInChildren<Text>();
             textComponent.text = "Sector Origins: (Click part to mark on map)";
+            int i = 0;
             foreach (var origin in origins)
             {
+                i++;
                 if (!textComponent.text.Contains(origin))
                 {
                     textComponent.text += "\n" + origin;
                 }
+                if (i >= 10) break;
+            }
+            if (i >= 10 && origins.Count - i > 0)
+            {
+                textComponent.text += $"\nAND {origins.Count - i} OTHER{(origins.Count - i == 1 ? "" : "S")}";
             }
 
             if (status == PartIndexScript.PartStatus.Obtained)

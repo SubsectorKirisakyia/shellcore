@@ -16,9 +16,13 @@ namespace NodeEditorFramework.Standard
 		public string loadSceneName;
 		private NodeEditorUserCache canvasCache;
 		private NodeEditorInterface editorInterface;
-
 		public Image raycastBlocker;
         string finalPath;
+
+		public NodeEditorInterface GetEditorInterface()
+		{
+			return editorInterface;
+		}
 
 		// GUI rects
 		public bool screenSize = false;
@@ -111,7 +115,7 @@ namespace NodeEditorFramework.Standard
 			OverlayGUI.StartOverlayGUI("RTNodeEditor");
 			
 			// Set various nested groups
-			GUI.BeginGroup(rootRect, GUI.skin.box);
+			GUI.BeginGroup(rootRect, (Texture)null);
 
 			// Begin Node Editor GUI and set canvas rect
 			NodeEditorGUI.StartNodeGUI(false);

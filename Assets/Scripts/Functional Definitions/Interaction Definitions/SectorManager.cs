@@ -300,18 +300,22 @@ public class SectorManager : MonoBehaviour
         {
             bgSpawnTimer += Time.deltaTime;
 
-            if (bgSpawnTimer >= 8 && bgSpawns.Count > 0)
+            if (bgSpawnTimer >= 8 && bgSpawns.Count > 0 && totalBGSpawnsAlive < 5)
             {
                 bgSpawnTimer = 0;
                 var key = bgSpawns[Random.Range(0, bgSpawns.Count)];
                 var spawnPoint = player.transform.position + Quaternion.Euler(0, 0, Random.Range(0, 360)) * new Vector3(key.Item4, 0, 0);
                 key.Item2.position = spawnPoint;
                 key.Item2.ID = "";
-                SpawnEntity(key.Item1, key.Item2);
+                var entity = SpawnEntity(key.Item1, key.Item2);
+                entity.IsBGSpawn = true;
                 AudioManager.PlayClipByID("clip_respawn", spawnPoint);
+                totalBGSpawnsAlive++;
             }
         }
     }
+
+    public float totalBGSpawnsAlive = 0;
 
     public static int currentSectorIndex = 0;
     public void ReloadSector(int sectorToChange)
@@ -670,7 +674,6 @@ public class SectorManager : MonoBehaviour
     public static EntityBlueprint TryGettingEntityBlueprint(string jsonOrName, bool canUseSkirmishBlueprints = false)
     {
         var blueprint = ScriptableObject.CreateInstance<EntityBlueprint>();
-
         // try parsing directly
         try
         {
@@ -687,8 +690,9 @@ public class SectorManager : MonoBehaviour
         {
             try
             {
+                var path = System.IO.Path.Combine(Application.persistentDataPath, "PresetBlueprints", jsonOrName + ".json");
                 JsonUtility.FromJsonOverwrite(System.IO.File.ReadAllText
-                    (System.IO.Path.Combine(Application.persistentDataPath, "PresetBlueprints", jsonOrName + ".json")), blueprint);
+                    (path), blueprint);
                 return blueprint;
             }
             catch
@@ -700,8 +704,9 @@ public class SectorManager : MonoBehaviour
         // if that fails try fetching the entity file
         try
         {
+            var path = System.IO.Path.Combine(instance.resourcePath, "Entities", jsonOrName + ".json");
             JsonUtility.FromJsonOverwrite(System.IO.File.ReadAllText
-                (System.IO.Path.Combine(instance.resourcePath, "Entities", jsonOrName + ".json")), blueprint);
+                (path), blueprint);
             return blueprint;
         }
         catch
@@ -709,16 +714,22 @@ public class SectorManager : MonoBehaviour
 
         }
 
-        // if that fails try grabbing a drone
-        try
+        // if that fails try grabbing from the entity placeholder if in the WC
+        if (SceneManager.GetActiveScene().name == "WorldCreator")
         {
-            JsonUtility.FromJsonOverwrite(DroneUtilities.GetDroneSpawnDataByShorthand(jsonOrName).drone, blueprint);
-            return blueprint;
-        }
-        catch
-        {
+            try
+            {                
+                var path = System.IO.Path.Combine(Application.streamingAssetsPath, "EntityPlaceholder", jsonOrName + ".json");
+                JsonUtility.FromJsonOverwrite(System.IO.File.ReadAllText
+                    (path), blueprint);
+                return blueprint;
+            }
+            catch
+            {
 
+            }
         }
+
 
         // if that fails try grabbing from the resource manager
         try
@@ -885,11 +896,21 @@ public class SectorManager : MonoBehaviour
             case EntityBlueprint.IntendedType.Turret:
                 {
                     gObj.AddComponent<Turret>();
+                    json = data.blueprintJSON;
+                    if (!string.IsNullOrEmpty(json))
+                    {
+                        blueprint = TryGettingEntityBlueprint(json);
+                    }
                     break;
                 }
             case EntityBlueprint.IntendedType.Tank:
                 {
                     gObj.AddComponent<Tank>();
+                    json = data.blueprintJSON;
+                    if (!string.IsNullOrEmpty(json))
+                    {
+                        blueprint = TryGettingEntityBlueprint(json);
+                    }
                     break;
                 }
             case EntityBlueprint.IntendedType.Bunker:
@@ -926,6 +947,11 @@ public class SectorManager : MonoBehaviour
             case EntityBlueprint.IntendedType.Drone:
                 {
                     Drone drone = gObj.AddComponent<Drone>();
+                    json = data.blueprintJSON;
+                    if (!string.IsNullOrEmpty(json))
+                    {
+                        blueprint = TryGettingEntityBlueprint(json);
+                    }
                     //drone.path = ResourceManager.GetAsset<Path>(data.pathID);
                     break;
                 }
@@ -1628,16 +1654,13 @@ public class SectorManager : MonoBehaviour
                     }
                 }
 
-                if (!droneHasPart)
+                if ((droneHasPart || Vector3.SqrMagnitude(part.transform.position - player.transform.position) < objectDespawnDistance) && current.dimension == lastDimension)
                 {
-                    if (Vector3.SqrMagnitude(part.transform.position - player.transform.position) < objectDespawnDistance && current.dimension == lastDimension)
-                    {
-                        savedParts.Add(part);
-                    }
-                    else
-                    {
-                        Destroy(part.gameObject);
-                    }
+                    savedParts.Add(part);
+                }
+                else
+                {
+                    Destroy(part.gameObject);
                 }
             }
         }

@@ -157,9 +157,9 @@ public class WCGeneratorHandler : MonoBehaviour
                     }
 
                     // make sure the faction was not already copied in
-                    if (!File.Exists(System.IO.Path.Combine(factionPlaceholderPath, faction.factionName + ".json")))
+                    if (!File.Exists(System.IO.Path.Combine(factionPlaceholderPath, $"{faction.factionName}-{faction.ID}.json")))
                     {
-                        File.Copy(resPath, System.IO.Path.Combine(factionPlaceholderPath, faction.factionName + ".json"));
+                        File.Copy(resPath, System.IO.Path.Combine(factionPlaceholderPath, $"{faction.factionName}-{faction.ID}.json"));
                         legacyFactionFilesToDelete.Add(resPath);
                     }
                 }
@@ -264,6 +264,21 @@ public class WCGeneratorHandler : MonoBehaviour
         }
 
         Dictionary<string, string> itemSectorsByID = new Dictionary<string, string>();
+        Dictionary<int, int> usedIDs = new Dictionary<int, int>();
+
+        foreach (var item in items)
+        {
+            int test = -1;
+            if (!string.IsNullOrEmpty(item.ID) && int.TryParse(item.ID, out test))
+            {
+                if (usedIDs.ContainsKey(test))
+                {
+                    item.ID = null;
+                    continue;
+                }
+                usedIDs.Add(test, 0);
+            }
+        }
 
         foreach (var item in items)
         {
@@ -307,10 +322,14 @@ public class WCGeneratorHandler : MonoBehaviour
                             ent.blueprintJSON = item.shellcoreJSON;
                         }
 
-                        int test;
-                        if (string.IsNullOrEmpty(item.ID) || int.TryParse(item.ID, out test))
+                        if (string.IsNullOrEmpty(item.ID))
                         {
-                            ent.ID = (ID++).ToString();
+                            while (usedIDs.ContainsKey(ID))
+                            {
+                                ID++;
+                            }
+                            ent.ID = (ID).ToString();
+                            ID++;
                         }
                         else
                         {
@@ -360,6 +379,13 @@ public class WCGeneratorHandler : MonoBehaviour
                     }
 
                     var charExists = cursor.characters.Exists(ch => ch.ID == ent.ID);
+                    var jsonSensitiveAssets = new List<string>() {"groundcarrier_blueprint" ,"carrier_blueprint" ,"outpost_blueprint"
+                             ,"bunker_blueprint" ,"missile_station" ,"air_weapon_station", "defense_turret", 
+                             "siege_turret", "harvester_turret", "missile_turret", "torpedo_turret", "mini_drone_blueprint", "worker_drone_blueprint",
+                             "strike_drone_blueprint", "light_drone_blueprint", "gun_drone_blueprint", "counter_drone_blueprint", 
+                             "torpedo_drone_blueprint", "heavy_drone_blueprint", "speeder_tank", "bullet_tank", 
+                             "missile_tank", "beam_tank", "laser_tank", "rocket_tank"};
+
                     if (ent.assetID == "shellcore_blueprint" || charExists)
                     {
                         if (container.type != Sector.SectorType.SiegeZone && !sectTargetIDS[container].Contains(ent.ID))
@@ -409,8 +435,8 @@ public class WCGeneratorHandler : MonoBehaviour
                             AttemptAddPartArray(traderInventory.parts, container.sectorName);
                         }
                     }
-                    else if (ent.assetID == "groundcarrier_blueprint" || ent.assetID == "carrier_blueprint" || ent.assetID == "outpost_blueprint"
-                             || ent.assetID == "bunker_blueprint" || ent.assetID == "missile_station" || ent.assetID == "air_weapon_station")
+
+                    else if (jsonSensitiveAssets.Contains(ent.assetID))
                     {
                         ent.blueprintJSON = item.shellcoreJSON;
                     }
@@ -463,7 +489,7 @@ public class WCGeneratorHandler : MonoBehaviour
                                 part.secondaryData = startTask.partSecondaryData;
                                 part = PartIndexScript.CullToPartIndexValues(part);
 
-                                AddPart(part, missionName);
+                                AddPart(part, missionName, true);
                             }
                         }
                         if (missionName != null)
@@ -536,7 +562,7 @@ public class WCGeneratorHandler : MonoBehaviour
                     continue;
                 }
 
-                lines.Add($"{faction.factionName}:Factions/{faction.factionName}.json");
+                lines.Add($"{faction.factionName}-{faction.ID}:Factions/{faction.factionName}-{faction.ID}.json");
             }
 
             File.WriteAllLines(resourceTxtPath, lines);
@@ -1027,7 +1053,7 @@ public class WCGeneratorHandler : MonoBehaviour
     ///
     /// Attempt to add a part into the index, check if the player obtained/saw it
     ///
-    public void AddPart(EntityBlueprint.PartInfo part, string origin)
+    public void AddPart(EntityBlueprint.PartInfo part, string origin, bool addAsMission = false)
     {
         part = PartIndexScript.CullToPartIndexValues(part);
         WorldData.PartIndexData data = partData.Find((pData) => pData.part.Equals(part));
@@ -1041,6 +1067,11 @@ public class WCGeneratorHandler : MonoBehaviour
 
         if (!data.origins.Contains(origin))
         {
+            if (addAsMission) 
+            {
+                data.origins.Insert(0, origin);
+                return;
+            }
             data.origins.Add(origin);
         }
     }

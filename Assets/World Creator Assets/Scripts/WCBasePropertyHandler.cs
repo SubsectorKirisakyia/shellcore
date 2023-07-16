@@ -267,10 +267,12 @@ public class WCBasePropertyHandler : GUIWindowScripts
 
                 Directory.CreateDirectory(System.IO.Path.Combine(Application.streamingAssetsPath, "FactionPlaceholder"));
                 File.WriteAllText(System.IO.Path.Combine(
-                        System.IO.Path.Combine(Application.streamingAssetsPath, "FactionPlaceholder"), $"{newFaction.factionName}.json"),
+                        System.IO.Path.Combine(Application.streamingAssetsPath, "FactionPlaceholder"), $"{newFaction.factionName}-{newFaction.ID}.json"),
                     JsonUtility.ToJson(newFaction)
                 );
                 SetupMenu();
+                if (WaveBuilder.instance)
+                    WaveBuilder.instance.UpdateFactions();
                 break;
             case Mode.Miscellaneous:
                 break;

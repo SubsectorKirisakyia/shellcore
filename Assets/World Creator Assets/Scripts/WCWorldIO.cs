@@ -9,7 +9,8 @@ using UnityEngine.UI;
 using Unity.Netcode;
 using UnityEngine.EventSystems;
 using System.Linq;
-
+using NodeEditorFramework.Standard;
+using NodeEditorFramework.IO;
 public class WCWorldIO : GUIWindowScripts
 {
     public WCGeneratorHandler generatorHandler;
@@ -17,6 +18,7 @@ public class WCWorldIO : GUIWindowScripts
     private SelectionDisplayHandler displayHandler;
     public ShipBuilder builder;
     public WaveBuilder waveBuilder;
+    public RTNodeEditor nodeEditor;
     public GameObject buttonPrefab;
     public Transform content;
     public RectTransform IOContainer;
@@ -55,7 +57,9 @@ public class WCWorldIO : GUIWindowScripts
         ReadWaveJSON,
         WriteWaveJSON,
         ReadVendingBlueprintJSON,
-        WriteVendingBlueprintJSON
+        WriteVendingBlueprintJSON,
+        ReadCanvas,
+        WriteCanvas
     }
 
     IOMode mode = IOMode.Read;
@@ -92,6 +96,22 @@ public class WCWorldIO : GUIWindowScripts
         IOContainer.sizeDelta = new Vector2(330, IOContainer.sizeDelta.y);
         worldContents.SetActive(false);
         Show(IOMode.WriteShipJSON);
+    }
+
+    public void ShowCanvasReadMode()
+    {
+        IOContainer.sizeDelta = new Vector2(330, IOContainer.sizeDelta.y);
+        nodeEditor.enabled = false;
+        worldContents.SetActive(false);
+        Show(IOMode.ReadCanvas);
+    }
+
+    public void ShowCanvasWriteMode()
+    {
+        IOContainer.sizeDelta = new Vector2(330, IOContainer.sizeDelta.y);
+        nodeEditor.enabled = false;
+        worldContents.SetActive(false);
+        Show(IOMode.WriteCanvas);
     }
 
     public void ShowReadMode()
@@ -275,10 +295,16 @@ public class WCWorldIO : GUIWindowScripts
         SaveMenuIcon.LoadSaveByPath(savePath, false);
     }
 
+    IEnumerator coroutine;
+
     void SetWorldIndicators(string path)
     {
-        StopAllCoroutines();
-        StartCoroutine(ReadAllSectors(path));
+        if (coroutine != null)
+        {
+            StopCoroutine(coroutine);
+        }
+        coroutine = ReadAllSectors(path);
+        StartCoroutine(coroutine);
         worldPathName.text = "Currently selected: " + System.IO.Path.GetFileName(path);
         WorldData wdata = ScriptableObject.CreateInstance<WorldData>();
         try
@@ -356,6 +382,8 @@ public class WCWorldIO : GUIWindowScripts
                 displayHandler.ClearDisplay();
                 builder.currentPartHandler.SetActive(true);
             }
+
+            if (nodeEditor && !nodeEditor.enabled) nodeEditor.enabled = true;
         };
         rwFromEntityPlaceholder = SceneManager.GetActiveScene().name != "SampleScene";
         placeholderPath = System.IO.Path.Combine(Application.streamingAssetsPath, "EntityPlaceholder");
@@ -379,7 +407,7 @@ public class WCWorldIO : GUIWindowScripts
         active = true;
         gameObject.SetActive(true);
         window.SetActive(true);
-        bool writing = mode == IOMode.Write || mode == IOMode.WriteShipJSON || mode == IOMode.WriteWaveJSON;
+        bool writing = mode == IOMode.Write || mode == IOMode.WriteShipJSON || mode == IOMode.WriteWaveJSON || mode == IOMode.WriteCanvas;
         DestroyAllButtons();
         this.mode = mode;
         string[] directories = null;
@@ -399,6 +427,11 @@ public class WCWorldIO : GUIWindowScripts
 
         var wrongReadingFromBPS = (readingFromPresetBPs == rwFromEntityPlaceholder);
         if (wrongReadingFromBPS) SwitchBPDirectory();
+        if (loadingText)
+        {
+            loadingText.text = "If you select a world, its map will appear here.";
+            loadingText.gameObject.SetActive(true);
+        } 
         switch (mode)
         {
             case IOMode.Read:
@@ -440,6 +473,25 @@ public class WCWorldIO : GUIWindowScripts
                 }
                 directories = Directory.GetFiles(path);
                 break;
+            case IOMode.ReadCanvas:
+            case IOMode.WriteCanvas:
+                path = System.IO.Path.Combine(Application.streamingAssetsPath, "CanvasPlaceholder");
+                if (!Directory.Exists(path))
+                {
+                    Directory.CreateDirectory(path);
+                }
+                var x = new List<string>(Directory.GetFiles(path));
+                x.Sort((x, y) => {
+                    var ext1 = System.IO.Path.GetExtension(x);
+                    var ext2 = System.IO.Path.GetExtension(y);
+                    var i = ext1 == ".sectordata" ? 2 : ext1 == ".dialoguedata" ? 1 : 0;
+                    var j = ext2 == ".sectordata" ? 2 : ext2 == ".dialoguedata" ? 1 : 0;
+                    if (i == j) return x.CompareTo(y);
+                    return i - j;
+                });
+                directories = x.ToArray();
+                break;
+
         }
 
         foreach (var dir in directories)
@@ -470,17 +522,26 @@ public class WCWorldIO : GUIWindowScripts
                             waveBuilder.ParseWaves(dir);
                             Hide();
                             break;
+                        case IOMode.ReadCanvas:
+                            nodeEditor.enabled = true;
+                            var intf = nodeEditor.GetEditorInterface();
+                            intf.canvasCache.SetCanvas(ImportExportManager.ImportCanvas(intf.GetImportExportFormat(), new object[] {dir}));
+                            NodeEditorInterface.forceUpdateCanvasUI = true;
+                            Hide();
+                            break;
+                        case IOMode.WriteCanvas:
+                            nodeEditor.enabled = true;
+                            intf = nodeEditor.GetEditorInterface();
+                            ImportExportManager.ExportCanvas(intf.canvasCache.nodeCanvas, intf.GetImportExportFormat(), dir);
+                            Hide();
+                            break;
                     }
                 }), displayRdbValidity);
             }
         }
-        foreach(var c in GetComponentsInParent<Canvas>().Reverse())
-        {
-            c.sortingOrder = ++PlayerViewScript.currentLayer;   
-        }
+        GetComponentInParent<Canvas>().sortingOrder = ++PlayerViewScript.currentLayer; // move window to top
+        GetComponentsInChildren<SubcanvasSortingOrder>(true).ToList().ForEach(x => x.Initialize());
     }
-
-
 
     public void SwitchBPDirectory()
     {
@@ -546,7 +607,10 @@ public class WCWorldIO : GUIWindowScripts
             });
         }
         
-        button.GetComponentInChildren<Text>().text = System.IO.Path.GetFileNameWithoutExtension(name);
+        var nameText = System.IO.Path.GetFileName(name);
+        if (mode != IOMode.Read && mode != IOMode.ReadCanvas && mode != IOMode.WriteCanvas)
+            nameText = System.IO.Path.GetFileNameWithoutExtension(name);
+        button.GetComponentInChildren<Text>().text = nameText;
         if (PlayerCore.Instance)
         {
             var print = SectorManager.TryGettingEntityBlueprint(File.ReadAllText(name));
@@ -614,6 +678,9 @@ public class WCWorldIO : GUIWindowScripts
             case IOMode.WriteWaveJSON:
                 path = System.IO.Path.Combine(Application.streamingAssetsPath, "WavePlaceholder", field.text + ".json");
                 break;
+            case IOMode.WriteCanvas:
+                path = System.IO.Path.Combine(Application.streamingAssetsPath, "CanvasPlaceholder", field.text + ImportExportFormat.GetCanvasExtension());
+                break;
         }
 
         if (!Directory.Exists(path) && (mode == IOMode.Read || mode == IOMode.Write))
@@ -641,6 +708,12 @@ public class WCWorldIO : GUIWindowScripts
                 break;
             case IOMode.WriteWaveJSON:
                 waveBuilder.ParseWaves(path);
+                Hide();
+                break;
+            case IOMode.WriteCanvas:
+                nodeEditor.enabled = true;
+                var intf = nodeEditor.GetEditorInterface();
+                ImportExportManager.ExportCanvas(intf.canvasCache.nodeCanvas, intf.GetImportExportFormat(), path);
                 Hide();
                 break;
             default:

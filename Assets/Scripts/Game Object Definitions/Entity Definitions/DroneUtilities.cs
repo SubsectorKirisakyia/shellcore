@@ -258,7 +258,11 @@ public static class DroneUtilities
         }
     }
 
-    public static List<string> DEFAULT_SECONDARY_DATA = new List<string>() {"mini_drone", "counter_drone", "light_drone", "strike_drone", "gun_drone", "heavy_drone", "torpedo_drone", "worker_drone"};
+    public static List<string> DEFAULT_SECONDARY_DATA = new List<string>() {"mini_drone", "worker_drone", "strike_drone", "light_drone", "gun_drone", "counter_drone", "torpedo_drone", "heavy_drone",};
+    public static string GetDefaultSecondaryDataByType(DroneType type)
+    {
+        return DEFAULT_SECONDARY_DATA[(int)type];
+    }
 
     public static DroneSpawnData GetDroneSpawnDataByShorthand(string secondaryData)
     {
@@ -281,9 +285,27 @@ public static class DroneUtilities
             case "worker_drone":
                 return ResourceManager.GetAsset<DroneSpawnData>("worker_drone_spawn");
             default:
-                var spawnData = ScriptableObject.CreateInstance<DroneSpawnData>();
-                JsonUtility.FromJsonOverwrite(secondaryData, spawnData);
-                return spawnData;
+                try
+                {
+                    var spawnData = ScriptableObject.CreateInstance<DroneSpawnData>();
+                    JsonUtility.FromJsonOverwrite(secondaryData, spawnData);
+                    return spawnData;
+                }
+                catch {}
+                try
+                {
+                    var blueprint = SectorManager.TryGettingEntityBlueprint(secondaryData);
+                    var data = ScriptableObject.CreateInstance<DroneSpawnData>();
+                    data.cooldown = GetCooldown(blueprint.customDroneType);
+                    data.energyCost = GetEnergyCost(blueprint.customDroneType);
+                    data.delay = GetDelay(blueprint.customDroneType);
+                    blueprint.entityName = GetAbilityNameByType(blueprint.customDroneType);
+                    data.drone = JsonUtility.ToJson(blueprint);
+                    data.type = blueprint.customDroneType;
+                    return data;
+                }
+                catch {};
+                return null;
         }
     }
 }

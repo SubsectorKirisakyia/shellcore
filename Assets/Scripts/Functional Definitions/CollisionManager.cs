@@ -71,6 +71,10 @@ public class CollisionManager : MonoBehaviour
                     continue;
                 if ((pos - energy.transform.position).sqrMagnitude < 1f)
                 {
+                    if (entity.IsInvisible)
+                        continue;
+                    if (entity.GetIsDead())
+                        continue;
                     var harvester = entity.GetComponentInChildren<Harvester>();
                     if (entity is IHarvester || harvester != null)
                     {
@@ -89,61 +93,72 @@ public class CollisionManager : MonoBehaviour
         }
     }
 
-    static bool ProjectileCollision(IProjectile projectile)
+    public static bool ProjectileCollision(IProjectile projectile)
     {
-        Vector2 pos = projectile.GetPosition();
-        for (int i = 0; i < AIData.entities.Count; i++)
-        {
-            Entity entity = AIData.entities[i];
-            if (!entity.GetBounds().Contains(pos))
-                continue;
-            if ((pos - (Vector2)entity.transform.position).sqrMagnitude < 1024f)
-            {
-                if (entity.IsInvisible)
-                    continue;
-                if (entity.GetIsDead())
-                    continue;
-                if (entity.GetInvisible())
-                    continue;
-                if (FactionManager.IsAllied(projectile.GetFaction(), entity.faction))
-                    continue;
-                if (!projectile.CheckCategoryCompatibility(entity))
-                    continue;
-                if (projectile.GetOwner() && projectile.GetOwner() == entity)
-                    continue;
+        Vector4 p = projectile.GetPositions();
+        Vector2 endPos = new(p.x, p.y);
+        Vector2 startPos = new(p.z, p.w);
+        float d = (startPos - endPos).magnitude;
+        int pointCount = ((int)d + 1) * 5;
 
-                Vector2[] colliders = entity.GetColliders();
-                for (int j = 0; j < colliders.Length / 4; j++)
+        for (int k = 0; k <= pointCount; k++)
+        {
+            Vector2 pos = Vector2.Lerp(startPos, endPos, (float)k / pointCount);
+            for (int i = 0; i < AIData.entities.Count; i++)
+            {
+                Entity entity = AIData.entities[i];
+                if (!entity.GetBounds().Contains(pos))
+                    continue;
+                if ((pos - (Vector2)entity.transform.position).sqrMagnitude < 1024f)
                 {
-                    bool collision = SATCollision.PointInRectangle(
-                        colliders[j * 4 + 0],
-                        colliders[j * 4 + 1],
-                        colliders[j * 4 + 2],
-                        colliders[j * 4 + 3],
-                        pos);
-                    if (collision)
+                    if (entity.IsInvisible)
+                        continue;
+                    if (entity.GetIsDead())
+                        continue;
+                    if (entity.GetInvisible())
+                        continue;
+                    if (FactionManager.IsAllied(projectile.GetFaction(), entity.faction))
+                        continue;
+                    if (!projectile.CheckCategoryCompatibility(entity))
+                        continue;
+                    if (projectile.GetOwner() && projectile.GetOwner() == entity)
+                        continue;
+
+                    Vector2[] colliders = entity.GetColliders();
+                    for (int j = 0; j < colliders.Length / 4; j++)
                     {
-                        if (j == colliders.Length / 4 - 1)
+                        bool collision = SATCollision.PointInRectangle(
+                            colliders[j * 4 + 0],
+                            colliders[j * 4 + 1],
+                            colliders[j * 4 + 2],
+                            colliders[j * 4 + 3],
+                            pos);
+                        if (collision)
                         {
-                            projectile.HitDamageable(entity);
+                            if (j == colliders.Length / 4 - 1)
+                            {
+                                projectile.HitDamageable(entity);
+                                return true;
+                            }
+                            projectile.HitPart(entity.parts[j]);
                             return true;
                         }
-                        projectile.HitPart(entity.parts[j]);
-                        return true;
                     }
                 }
             }
-        }
-
-        foreach (var shard in AIData.shards)
-        {
-            Vector2 shardPos = shard.transform.position;
-            if ((shardPos - pos).sqrMagnitude < 4f)
+            foreach (var shard in AIData.shards)
             {
-                projectile.HitDamageable(shard);
-                return true;
+                Vector2 shardPos = shard.transform.position;
+                if ((shardPos - pos).sqrMagnitude < 4f)
+                {
+                    projectile.HitDamageable(shard);
+                    return true;
+                }
             }
         }
+        
+
+
 
         return false;
     }

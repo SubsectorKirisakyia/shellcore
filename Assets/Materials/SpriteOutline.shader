@@ -72,19 +72,29 @@
                 outlineC.a *= ceil(c.a);
                 outlineC.rgb *= outlineC.a;
  				
-				fixed2 texelSize = _MainTex_TexelSize * 9.0f;
+				fixed4 texelSize = _MainTex_TexelSize ;
+                float u = 1.0f;
 
-                fixed alpha_up = tex2D(_MainTex, i.uv + fixed2(0, texelSize.y)).a;
-                fixed alpha_down = tex2D(_MainTex, i.uv - fixed2(0, texelSize.y)).a;
-                fixed alpha_right = tex2D(_MainTex, i.uv + fixed2(texelSize.x, 0)).a;
-                fixed alpha_left = tex2D(_MainTex, i.uv - fixed2(texelSize.x, 0)).a;
+                for (fixed l=-texelSize.x* 2.0f; l <= texelSize.x* 3.0f; l += texelSize.x)
+                {
+                    for (fixed m=-texelSize.y* 2.0f; m <= texelSize.y* 3.0f; m += texelSize.y)
+                    {
+                        fixed o = tex2D(_MainTex, i.uv + fixed2(l, m)).a;
+                        if (c.a <= 0.2f) o = 1.0f;
+                        else
+                        {
+                            fixed jj = 1.0f;
+                            if (i.uv.y + m >= 1.0f - jj*texelSize.y) o = 0.0f;
+                            if (i.uv.y - m <= jj*texelSize.y) o = 0.0f;
+                            if (i.uv.x + l >= 1.0f - jj*texelSize.x) o = 0.0f;
+                            if (i.uv.x - l <= jj*texelSize.x) o = 0.0f;
+                        }
+                        u *= o;
+                        //o = floor(o);
+                    }
+                }
 
-				if (alpha_up > 0.9f && i.uv.y + texelSize.y > 1.0f) alpha_up = 0.0f;
-				if (alpha_down > 0.9f && i.uv.y - texelSize.y < 0.0f) alpha_down = 0.0f;
-				if (alpha_right > 0.9f && i.uv.x + texelSize.x > 1.0f) alpha_right = 0.0f;
-				if (alpha_left > 0.9f && i.uv.x - texelSize.x < 0.0f) alpha_left = 0.0f;
- 		    
-                return lerp(outlineC, c, ceil(alpha_up * alpha_down * alpha_right * alpha_left));
+                return lerp(outlineC, c, ceil(u));
             }
             ENDCG
         }

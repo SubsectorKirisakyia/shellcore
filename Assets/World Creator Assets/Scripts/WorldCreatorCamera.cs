@@ -7,8 +7,10 @@ public class WorldCreatorCamera : MonoBehaviour
     public EventSystem system;
     public CanvasGroup group;
     public int sectorIndex = 0;
+
+    // Changing zoom requires change to sector border line size equation in WorldCreatorSectorRepScript
     public static int minZ = -10;
-    public static int maxZ = -150;
+    public static int maxZ = -600;
     public static WorldCreatorCamera instance;
 
     void FixedUpdate()
@@ -17,8 +19,14 @@ public class WorldCreatorCamera : MonoBehaviour
         //group.interactable = (Input.GetAxis("Horizontal") == 0 && Input.GetAxis("Vertical") == 0);
         if (!system.IsPointerOverGameObject())
         {
-            transform.position += Input.GetAxis("Horizontal") * new Vector3(1 + Mathf.Abs(transform.position.z + 10) / 4, 0, 0);
-            transform.position += Input.GetAxis("Vertical") * new Vector3(0, 1 + Mathf.Abs(transform.position.z + 10) / 4, 0);
+            if (InputManager.GetKey(KeyName.Right))
+                transform.position += new Vector3(1 + Mathf.Abs(transform.position.z + 10) / 4, 0, 0);
+            if (InputManager.GetKey(KeyName.Left))
+                transform.position -= new Vector3(1 + Mathf.Abs(transform.position.z + 10) / 4, 0, 0);
+            if (InputManager.GetKey(KeyName.Down))
+                transform.position -= new Vector3(0, 1 + Mathf.Abs(transform.position.z + 10) / 4, 0);
+            if (InputManager.GetKey(KeyName.Up))
+                transform.position += new Vector3(0, 1 + Mathf.Abs(transform.position.z + 10) / 4, 0);
 
 
             if (Input.GetMouseButton(2))

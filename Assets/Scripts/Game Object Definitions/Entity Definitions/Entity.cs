@@ -72,7 +72,6 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
     public Dialogue dialogue; // dialogue of entity
     protected Draggable draggable; // associated draggable
     protected bool initialized; // is the entity safe to call update() on?
-    public EntityCategory category = EntityCategory.Unset; // these two fields will be changed via hardcoding in child class files
     public string ID; // used in tasks
     protected float[] baseMaxHealth = new float[3];
     private int controlStacks;
@@ -354,6 +353,13 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
         get { return terrain; }
         protected set { terrain = value; }
     }
+    EntityCategory category = EntityCategory.Unset; // these two fields will be changed via hardcoding in child class files
+    public EntityCategory Category
+    {
+        get { return category; }
+        protected set { category = value; }
+    }
+
 
     // boolean used to check if proximity and reticle interactions should trigger for this entity
     private bool interactible = false;
@@ -1043,7 +1049,8 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
             {
                 foreach (var part in blueprint.parts)
                 {
-                    player.cursave.partsSeen.Add(PartIndexScript.CullToPartIndexValues(part));
+                    var p = PartIndexScript.CullToPartIndexValues(part);
+                    PartIndexScript.AttemptAddToPartsSeen(p);
                 }
             }
         }
@@ -1098,6 +1105,8 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
         }
     }
 
+    public bool IsBGSpawn { get; set; }
+
     protected virtual void OnDestroy()
     {
         if (AIData.entities.Contains(this))
@@ -1116,7 +1125,10 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
         }
 
         if (SectorManager.instance)
+        {
             SectorManager.instance.RemoveObject(ID, gameObject);
+            if (IsBGSpawn) SectorManager.instance.totalBGSpawnsAlive--;
+        }
 
         RememberWeaponActivationStates();
         if (MasterNetworkAdapter.mode != NetworkMode.Client && networkAdapter && !networkAdapter.isPlayer.Value)
@@ -1145,6 +1157,7 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
         //transform.rotation = Quaternion.identity; // reset rotation
         GetComponent<SpriteRenderer>().enabled = true; // enable sprite renderer
         busyTimer = 0; // reset busy timer
+        weaponGCD = 0.1F;
         if (SectorManager.instance && SectorManager.instance.current &&
         SectorManager.instance.current.type == Sector.SectorType.BattleZone && ((new List<string>(SectorManager.instance.current.targets)).Contains(ID) || (networkAdapter != null && networkAdapter.isPlayer.Value)) )
         {
@@ -1374,9 +1387,10 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
         {
             part.GetComponent<Ability>().SetDestroyed(true);
         }
-
+        var drone = this as Drone;
+        var isLightDrone = drone && drone.type == DroneType.Light; // Accounting for light drone weight reduction.
         entityBody.mass -= part.partMass;
-        weight -= part.partMass * weightMultiplier;
+        weight -= isLightDrone ? part.partMass * weightMultiplier * .6F : part.partMass * weightMultiplier;
         if (this is Craft craft)
         {
             craft.CalculatePhysicsConstants();

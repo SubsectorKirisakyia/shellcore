@@ -20,9 +20,16 @@ namespace NodeEditorFramework.Standard
         public bool showModalPanel;
 		public Rect modalPanelRect = new Rect(20, 50, 250, 150);
 		public Action modalPanelContent;
+    	public static bool forceUpdateCanvasUI = false;
 
 		// IO Format modal panel
 		private ImportExportFormat IOFormat;
+		public ImportExportFormat GetImportExportFormat()
+		{
+			if (IOFormat == null) 
+				IOFormat = ImportExportManager.ParseFormat("XML");
+			return IOFormat;
+		}
 		private object[] IOLocationArgs;
 		private delegate bool? DefExportLocationGUI(string canvasName, ref object[] locationArgs);
 		private delegate bool? DefImportLocationGUI(ref object[] locationArgs);
@@ -49,7 +56,7 @@ namespace NodeEditorFramework.Standard
 		public void DrawToolbarGUI(Rect rect)
 		{
 			rect.height = toolbarHeight;
-            rect.width = 280f;
+            rect.width = 180f;
 			if(!showModalPanel)
 			{
 				GUILayout.BeginArea (rect, NodeEditorGUI.toolbar);
@@ -72,6 +79,7 @@ namespace NodeEditorFramework.Standard
                     }
                     IOLocationArgs = null;
                 }
+				/*
 				if (GUILayout.Button("Import", NodeEditorGUI.toolbarButton, GUILayout.Width(50)))
 				{
 					IOFormat = ImportExportManager.ParseFormat("XML");
@@ -99,6 +107,7 @@ namespace NodeEditorFramework.Standard
 					else if (IOFormat.ExportLocationArgsSelection(canvasCache.nodeCanvas.saveName, out IOLocationArgs))
 						ImportExportManager.ExportCanvas(canvasCache.nodeCanvas, IOFormat, IOLocationArgs);
 				}
+				*/
                 string buttonText = "Mission";
                 switch (NodeEditorGUI.state)
                 {
@@ -150,7 +159,11 @@ namespace NodeEditorFramework.Standard
 				if (Event.current.type == EventType.Repaint)
 					toolbarHeight = 20;
 			}
-			
+			if (forceUpdateCanvasUI)
+			{
+				forceUpdateCanvasUI = false;
+				NodeEditorGUI.Init();
+			}
 		}
 
         public void AutoSave()

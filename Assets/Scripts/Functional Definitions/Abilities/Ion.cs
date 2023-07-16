@@ -26,7 +26,7 @@ public class Ion : WeaponAbility
     protected override void Start()
     {
         base.Start();
-        lineController.Init(targetingSystem, Core, range, part, abilityTier);
+        lineController.Init(targetingSystem, Core, range, part, abilityTier, type == WeaponDiversityType.Torpedo ? Entity.TerrainType.Ground : Entity.TerrainType.Air);
     }
 
     public override void SetDestroyed(bool destroyed)
@@ -36,7 +36,7 @@ public class Ion : WeaponAbility
             Destroy(lineController.gameObject);
         }
 
-        base.SetDestroyed(true);
+        base.SetDestroyed(destroyed);
     }
 
     void OnDestroy()

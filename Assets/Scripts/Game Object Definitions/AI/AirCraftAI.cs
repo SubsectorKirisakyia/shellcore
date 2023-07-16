@@ -28,6 +28,7 @@ public class AirCraftAI : MonoBehaviour
         KeepMoving
     }
 
+    [SerializeField]
     private AIMode mode = AIMode.Inactive;
     private AIState state;
     public AIAggression aggression;
@@ -45,6 +46,7 @@ public class AirCraftAI : MonoBehaviour
 
     public AIMovement movement;
     public AIAbilityController abilityControl;
+    public Dictionary<VendingBlueprint.Item.AIEquivalent, bool> vendingItemEnabled = new Dictionary<VendingBlueprint.Item.AIEquivalent, bool>();
 
     //public static List<Entity> entities = new List<Entity>();
 

@@ -141,6 +141,41 @@ public class WorldCreatorCursor : MonoBehaviour
     [SerializeField]
     private Text dimensionText;
 
+    private void KeybindToggles()
+    {
+        if (system.IsPointerOverGameObject()) return;
+        if (Input.GetKeyDown(KeyCode.Z) && (int)mode < 3)
+        {
+            system.SetSelectedGameObject(null);
+            ShiftMode(1);
+        }
+
+        if (Input.GetKeyDown(KeyCode.G))
+        {
+            system.SetSelectedGameObject(null);
+            if (Input.GetKey(KeyCode.LeftShift))
+            {
+                AddDimension();
+            }
+            else
+            {
+                IncrementDimension();
+            }
+        }
+
+        if (Input.GetKeyDown(KeyCode.M))
+        {
+            system.SetSelectedGameObject(null);
+            manual.ToggleActive();
+        }
+
+        if (Input.GetKey(KeyCode.LeftControl) && Input.GetKeyDown(KeyCode.F))
+        {
+            system.SetSelectedGameObject(null);
+            search.ToggleActive();
+        }
+    }
+
     void Update()
     {
         current.pos = CalcPos(current.type);
@@ -155,32 +190,9 @@ public class WorldCreatorCursor : MonoBehaviour
 
         VisualizeMouseInSector();
 
-        if (Input.GetKeyDown(KeyCode.Z) && (int)mode < 3)
-        {
-            ShiftMode(1);
-        }
+        KeybindToggles();
 
-        if (Input.GetKeyDown(KeyCode.G) && !system.IsPointerOverGameObject())
-        {
-            if (Input.GetKey(KeyCode.LeftShift))
-            {
-                AddDimension();
-            }
-            else
-            {
-                IncrementDimension();
-            }
-        }
-
-        if (Input.GetKeyDown(KeyCode.M) && !system.IsPointerOverGameObject())
-        {
-            manual.ToggleActive();
-        }
-
-        if (Input.GetKey(KeyCode.LeftControl) && Input.GetKeyDown(KeyCode.F) && !system.IsPointerOverGameObject())
-        {
-            search.ToggleActive();
-        }
+        
 
         dimensionText.text = $"Dimension: {currentDim + 1}/{DimensionCount}";
 
@@ -554,6 +566,7 @@ public class WorldCreatorCursor : MonoBehaviour
         {
             sectors.Remove(sector);
         }
+        sectorPropertyDisplay.HideIfNotEditingDefaults();
     }
 
     Vector2 sectorStoredMousePos;
@@ -828,13 +841,8 @@ public class WorldCreatorCursor : MonoBehaviour
                 renderer.startColor = renderer.endColor = Color.white;
                 if (CheckMouseContainsSector(sector))
                 {
-                    Destroy(renderer.gameObject);
-                    if (sectors.Contains(sector))
-                    {
-                        sectors.Remove(sector);
-                        currentSector = null;
-                        return;
-                    }
+                    RemoveSector(sector);
+                    return;
                 }
             }
         }
