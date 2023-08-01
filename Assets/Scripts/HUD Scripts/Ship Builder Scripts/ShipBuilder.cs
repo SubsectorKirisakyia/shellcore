@@ -77,7 +77,8 @@ public class ShipBuilder : GUIWindowScripts
     public GameObject partSelectContainer;
     public Transform[] partSelectTransforms;
 
-    public bool ContainsParts(List<EntityBlueprint.PartInfo> parts)
+    // supplemental parts in addition to existing parts in inventory
+    public bool ContainsParts(List<EntityBlueprint.PartInfo> parts, List<EntityBlueprint.PartInfo> supplementalParts = null)
     {
         Dictionary<EntityBlueprint.PartInfo, int> counts = new Dictionary<EntityBlueprint.PartInfo, int>();
         // get the part counts
@@ -89,6 +90,19 @@ public class ShipBuilder : GUIWindowScripts
                 counts.Add(p, partDict[p].GetCount());
             }
         }
+
+        if (supplementalParts != null)
+        // get the part counts
+        foreach (EntityBlueprint.PartInfo info in supplementalParts)
+        {
+            var p = CullSpatialValues(info);
+            if (!counts.ContainsKey(p))
+            {
+                counts.Add(p, 1);
+            }
+            else counts[p]++;
+        }
+
 
         foreach (ShipBuilderPart inf in cursorScript.parts)
         {
@@ -118,6 +132,38 @@ public class ShipBuilder : GUIWindowScripts
 
         return true;
     }
+
+    public void SwapDroneParts(List<EntityBlueprint.PartInfo> defaultParts, List<EntityBlueprint.PartInfo> existingParts, ShipBuilderInventoryScript button, DroneType type, bool increment = false)
+    {
+        foreach (var part in existingParts)
+        {
+            AddPart(CullSpatialValues(part));
+        }
+
+        foreach (var part in defaultParts)
+        {
+            if (!DecrementPartButton(part))
+                throw new Exception("Part of default drone not present in inventory.");
+        }
+
+        var p = button.part;
+        p.secondaryData = DroneUtilities.GetDefaultSecondaryDataByType(type);
+        p.playerGivenName = "";
+        if (increment)
+        {
+            button.IncrementCount();
+            if (!partDict.ContainsKey(p))
+                throw new Exception("Default drone part not present in inventory.");
+            partDict[p].DecrementCount(true);
+        }
+        else 
+        {
+            button.DecrementCount(true);
+            AddPart(p);
+        }
+        SavePartsToInventory();
+    }
+
 
     public bool DecrementPartButton(EntityBlueprint.PartInfo info)
     {
@@ -227,7 +273,7 @@ public class ShipBuilder : GUIWindowScripts
             dict[culledInfo].cursor = cursorScript;
         }
 
-        dict[culledInfo].IncrementCount();
+        dict[culledInfo].IncrementCount(mode == BuilderMode.Workshop && !GetDroneWorkshopSelectPhase());
         cursorScript.buildValue -= EntityBlueprint.GetPartValue(part.info);
         cursorScript.parts.Remove(part);
         Destroy(part.gameObject);
@@ -270,7 +316,8 @@ public class ShipBuilder : GUIWindowScripts
         PastSpawnsLimit,
         PastWeaponsLimit,
         PastPassivesLimit,
-        PartTooHeavy
+        PartTooHeavy,
+        DWTooManyParts,
     }
 
     public ReconstructButtonStatus reconstructStatus;
@@ -324,6 +371,10 @@ public class ShipBuilder : GUIWindowScripts
                 reconstructText.color = Color.red;
                 reconstructText.text = "A PART IS TOO HEAVY FOR YOUR CORE";
                 break;
+            case ReconstructButtonStatus.DWTooManyParts:
+                reconstructText.color = Color.red;
+                reconstructText.text = "TOO MANY PARTS ON DRONE";
+                break;
         }
     }
 
@@ -364,11 +415,16 @@ public class ShipBuilder : GUIWindowScripts
         }
 
         EntityBlueprint.PartInfo info = nameCandidate.part;
+        if (string.IsNullOrEmpty(nameInputField.text) || partDict.Keys.ToList().Exists(p => p.playerGivenName == nameInputField.text))
+        {
+            nameBox.SetActive(true);
+            return;
+        } 
+
         info.playerGivenName = nameInputField.text;
         AddPart(info);
         nameCandidate.DecrementCount(true);
         SavePartsToInventory();
-        print( nameCandidate.GetCount());
     }
 
 
@@ -569,6 +625,11 @@ public class ShipBuilder : GUIWindowScripts
             SetReconstructButton(ReconstructButtonStatus.PartTooHeavy);
             return;
         }
+        if (mode == BuilderMode.Workshop && droneSpawnData && DroneUtilities.GetPartLimit(droneSpawnData.type) < cursorScript.parts.Count())
+        {
+            SetReconstructButton(ReconstructButtonStatus.DWTooManyParts);
+            return;
+        }
         var ability = CheckAbilityCaps(cursorScript.parts, abilityLimits, shell, editorMode);
         if (ability != 0)
         {
@@ -679,14 +740,24 @@ public class ShipBuilder : GUIWindowScripts
     private GameObject droneWorkshopPhaseHider;
 
     private EntityBlueprint.PartInfo dronePart;
+    private DroneSpawnData droneSpawnData;
+    private int dronePartCount;
     [SerializeField]
     private ShipBuilderSortingButton[] sortingButtons;
     [SerializeField]
     private GameObject sortingObject;
+
+    public int GetDronePartCount()
+    {
+        return dronePartCount;
+    }
+
     public void InitializeDronePart(EntityBlueprint.PartInfo info)
     {
         CloseNameWindow(false);
+        dronePartCount = partDict[info].GetCount();
         dronePart = info;
+        droneSpawnData = DroneUtilities.GetDroneSpawnDataByShorthand(dronePart.secondaryData);
         droneWorkshopPhaseHider.SetActive(false);
         cursorScript.ClearAllParts();
         if (sortingObject)
@@ -727,11 +798,13 @@ public class ShipBuilder : GUIWindowScripts
             CloseUI(false); // prevent initializing twice by closing UI if already initialized
         }
 
+        droneSpawnData = null;
         initialized = true;
         instance = this;
+        dronePartCount = 0;
         Activate();
         cursorScript.gameObject.SetActive(false);
-        cursorScript.SetBuilder(this);
+        cursorScript.SetBuilder(this, droneWorkshopPhaseHider);
 
         GetComponentInChildren<ShipBuilderPartDisplay>().Initialize(this);
 
@@ -1239,6 +1312,7 @@ public class ShipBuilder : GUIWindowScripts
             blueprint.parts = new List<EntityBlueprint.PartInfo>();
             blueprint.coreShellSpriteID = blueprintCoreShellSpriteId;
             blueprint.coreSpriteID = "drone_light";
+            blueprint.entityName = DroneUtilities.GetAbilityNameByType(droneSpawnData.type);
 
             foreach (ShipBuilderPart part in cursorScript.parts)
             {
@@ -1249,7 +1323,7 @@ public class ShipBuilder : GUIWindowScripts
             oldData.drone = JsonUtility.ToJson(blueprint);
             button.part.secondaryData = JsonUtility.ToJson(oldData);
             partDict.Remove(dronePart);
-            if (partDict.ContainsKey(button.part)) partDict[button.part].IncrementCount();
+            if (partDict.ContainsKey(button.part)) throw new Exception("Part dict contained the modified drone. Since different parts cannot have the same names this shouldn't be possible.");
             else partDict.Add(button.part, button);
         }
 
@@ -1450,6 +1524,8 @@ public class ShipBuilder : GUIWindowScripts
             {
                 return;
             }
+
+            if (droneSpawnData && cursorScript.parts.Count() > DroneUtilities.GetPartLimit(droneSpawnData.type)) return;
         }
         
 

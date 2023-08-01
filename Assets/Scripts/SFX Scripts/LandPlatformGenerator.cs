@@ -59,6 +59,10 @@ public class LandPlatformGenerator : MonoBehaviour
     {
         if (Instance.groundPlatforms == null)
         {
+            if (DevConsoleScript.bugTrackTankDebug)
+            {
+                Debug.LogWarning("Null ground platforms.");
+            }
             return false;
         }
 
@@ -74,8 +78,18 @@ public class LandPlatformGenerator : MonoBehaviour
             {
                 return true;
             }
+            else if (tile.HasValue && DevConsoleScript.bugTrackTankDebug)
+            {
+                foreach (var collider in tile.Value.colliders)
+                    Debug.LogWarning(collider.transform.position);
+            }
         }
 
+        if (DevConsoleScript.bugTrackTankDebug)
+        {
+            Debug.LogWarning("Did not find ground. " + instance.Offset + " " + Instance.tileSize + " " + position + " " + relativePos + 
+            " " + Instance.groundPlatforms.Length);
+        }
         return false;
     }
 
@@ -517,7 +531,7 @@ public class LandPlatformGenerator : MonoBehaviour
         public Node parent;
     }
 
-    public static Vector2[] pathfind(Vector2 startPos, Entity[] targets, float maxDistance = 0f)
+    public static Vector2[] pathfind(Vector2 startPos, Entity[] targets, Vector2[] positions, float maxDistance = 0f)
     {
         float sqrDist = maxDistance * maxDistance;
 
@@ -527,12 +541,24 @@ public class LandPlatformGenerator : MonoBehaviour
 
         // Get end tiles
         List<Vector2Int> endTiles = new List<Vector2Int>();
-        for (int i = 0; i < targets.Length; i++)
-        {
-            var t = plat.GetClosestTile(targets[i]);
-            if ((TileToWorldPos(t.pos) - (Vector2)targets[i].transform.position).sqrMagnitude < sqrDist)
+        if(targets != null){
+            for (int i = 0; i < targets.Length; i++)
             {
-                endTiles.Add(t.pos);
+                var t = plat.GetClosestTile(targets[i]);
+                if ((TileToWorldPos(t.pos) - (Vector2)targets[i].transform.position).sqrMagnitude < sqrDist)
+                {
+                    endTiles.Add(t.pos);
+                }
+            }
+        }
+        else{
+            for (int i = 0; i < positions.Length; i++)
+            {
+                var t = instance.GetNearestTile(plat, positions[i]).Value;
+                if ((TileToWorldPos(t.pos) - positions[i]).sqrMagnitude < sqrDist)
+                {
+                    endTiles.Add(t.pos);
+                }
             }
         }
 

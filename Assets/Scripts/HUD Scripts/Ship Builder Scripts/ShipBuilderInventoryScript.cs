@@ -1,4 +1,5 @@
-﻿using UnityEngine;
+﻿using System.Collections.Generic;
+using UnityEngine;
 using UnityEngine.EventSystems;
 
 
@@ -38,7 +39,9 @@ public class ShipBuilderInventoryScript : ShipBuilderInventoryBase
 #endif
         }
 
-        if (count > 0)
+        var dwNotSelectionPhase = mode == BuilderMode.Workshop && !ShipBuilder.instance.GetDroneWorkshopSelectPhase();
+        var minCount = dwNotSelectionPhase ? -1 : ShipBuilder.instance.GetDronePartCount();
+        if (count > minCount)
         {
             if (mode == BuilderMode.Workshop)
             {
@@ -50,7 +53,32 @@ public class ShipBuilderInventoryScript : ShipBuilderInventoryBase
                     }
                     else
                     {
-                        ShipBuilder.instance.InitializeDronePart(part);
+                        var spawnData = DroneUtilities.GetDroneSpawnDataByShorthand(part.secondaryData);
+                        if (Input.GetKey(KeyCode.LeftControl))
+                        {
+                            var existingParts = SectorManager.TryGettingEntityBlueprint(spawnData.drone).parts;
+                            var parts = DroneUtilities.GetDefaultBlueprint(spawnData.type).parts;
+                            if (ShipBuilder.instance.ContainsParts(parts, existingParts))
+                            {
+                                ShipBuilder.instance.SwapDroneParts(parts, existingParts, this, spawnData.type);
+                            }
+                        }
+                        else if (Input.GetKey(KeyCode.LeftShift))
+                        {
+                            var p = ShipBuilder.CullSpatialValues(part);
+                            p.secondaryData = DroneUtilities.GetDefaultSecondaryDataByType(spawnData.type);
+                            p.playerGivenName = "";
+                            var existingParts = SectorManager.TryGettingEntityBlueprint(spawnData.drone).parts;
+                            var defaultParts = DroneUtilities.GetDefaultBlueprint(spawnData.type).parts;
+                            if (
+                                ShipBuilder.instance.ContainsParts(new List<EntityBlueprint.PartInfo>() {p}) &&
+                                ShipBuilder.instance.ContainsParts(existingParts, defaultParts))
+                            {
+                                ShipBuilder.instance.SwapDroneParts(existingParts, defaultParts, this, spawnData.type, true);
+                            }
+                        }
+                        else 
+                            ShipBuilder.instance.InitializeDronePart(part);
                     }
                     return;
                 }
@@ -58,7 +86,7 @@ public class ShipBuilderInventoryScript : ShipBuilderInventoryBase
 
 
             var builderPart = InstantiatePart();
-            DecrementCount();
+            DecrementCount(false, dwNotSelectionPhase);
             if (Input.GetKey(KeyCode.LeftShift))
             {
                 if (mode == BuilderMode.Yard && cursor.builder.GetMode() == BuilderMode.Trader)
@@ -74,7 +102,7 @@ public class ShipBuilderInventoryScript : ShipBuilderInventoryBase
                 }
             }
 
-            ShipBuilderPart symmetryPart = count > 0 && cursor.symmetryMode != ShipBuilderCursorScript.SymmetryMode.Off ? InstantiatePart() : null;
+            ShipBuilderPart symmetryPart = count > minCount && cursor.symmetryMode != ShipBuilderCursorScript.SymmetryMode.Off ? InstantiatePart() : null;
             if (symmetryPart)
             {
                 //if(cursor.symmetryMode == ShipBuilderCursorScript.SymmetryMode.X)
@@ -88,7 +116,7 @@ public class ShipBuilderInventoryScript : ShipBuilderInventoryBase
             cursor.GrabPart(builderPart, symmetryPart);
             if (symmetryPart)
             {
-                DecrementCount();
+                DecrementCount(false, dwNotSelectionPhase);
             }
 
             cursor.buildValue += EntityBlueprint.GetPartValue(part);
@@ -119,15 +147,29 @@ public class ShipBuilderInventoryScript : ShipBuilderInventoryBase
         return builderPart;
     }
 
-    public void IncrementCount()
+    public void IncrementCount(bool obeyDroneCount = false)
     {
-        count++;
+        if (obeyDroneCount)
+        {
+            for (int i = 0; i < ShipBuilder.instance.GetDronePartCount(); i++)
+            {
+                count++;
+            }
+        }
+        else count++;
     }
 
-    public void DecrementCount(bool destroyIfZero = false)
+    public void DecrementCount(bool destroyIfZero = false, bool obeyDroneCount = false)
     {
-        count--;
-        if (destroyIfZero && count == 0)
+        if (obeyDroneCount)
+        {
+            for (int i = 0; i < ShipBuilder.instance.GetDronePartCount(); i++)
+            {
+                count--;
+            }
+        }
+        else count--;
+        if (destroyIfZero && count <= 0)
         {
             ShipBuilder.instance.RemoveKeyFromPartDict(part);
             Destroy(gameObject);

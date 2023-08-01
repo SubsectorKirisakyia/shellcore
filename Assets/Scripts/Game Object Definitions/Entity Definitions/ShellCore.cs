@@ -14,6 +14,7 @@ public class ShellCore : AirCraft, IHarvester, IOwner
     public static PowerCollectDelegate OnPowerCollected;
 
     protected ICarrier carrier;
+    [SerializeField]
     protected int totalPower;
     protected GameObject bulletPrefab; // prefab for main bullet
     public int intrinsicCommandLimit;
@@ -168,6 +169,7 @@ public class ShellCore : AirCraft, IHarvester, IOwner
     {
         tractor.SetTractorTarget(null);
         StopYardRepairCoroutine();
+        if (ai) ai.OnEntityDeath();
         if (MasterNetworkAdapter.mode != NetworkMode.Off && !MasterNetworkAdapter.lettingServerDecide
             && lastDamagedBy is ShellCore core && core.networkAdapter && core.networkAdapter.isPlayer.Value)
         {

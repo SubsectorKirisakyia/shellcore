@@ -20,6 +20,7 @@ public class InteractAction
     public string taskID;
     public UnityAction action;
     public Traverser traverser;
+    public bool prioritize;
 }
 
 public class TaskManager : MonoBehaviour, IDialogueOverrideHandler
@@ -69,6 +70,7 @@ public class TaskManager : MonoBehaviour, IDialogueOverrideHandler
         MissionTraverser missionTraverser = traverser as MissionTraverser;
         action.taskHash = missionTraverser.taskHash;
         action.traverser = traverser;
+        action.taskID = missionTraverser.nodeCanvas.missionName;
         if (GetInteractionOverrides().ContainsKey(entityID))
         {
             GetInteractionOverrides()[entityID].Push(action);

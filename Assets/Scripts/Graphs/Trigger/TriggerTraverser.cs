@@ -10,6 +10,7 @@ public class TriggerTraverser : Traverser
     private Traverser nextTraverser;
     private Node nextNode;
     string triggerName;
+    public LoadSectorNode sectorStartNode;
     public TriggerTraverser(string triggerName, NodeCanvas canvas, Traverser nextTraverser, Node nextNode) : base(canvas)
     {
         this.triggerName = triggerName;
@@ -24,30 +25,63 @@ public class TriggerTraverser : Traverser
         return nodeCanvas.nodes.Find(x => x is StartTriggerNode trigger && trigger.triggerName == triggerName) as StartTriggerNode;
     }
 
+    ~TriggerTraverser()
+    {
+        SectorManager.SectorGraphLoad -= LoadSector;
+    }
+
     public override void StartQuest()
     {
         currentNode = findRoot();
+        if (sectorStartNode != null) 
+            SectorManager.SectorGraphLoad += LoadSector;
         Traverse();
     }
+
+    void LoadSector(string name)
+    {
+        if (!sectorStartNode) return;
+        if (name != sectorStartNode.sectorName)
+        {
+            if (currentNode is TimelineNode)
+            {
+                TaskManager.Instance.StopAllCoroutines();
+            }
+
+            if (currentNode is ConditionGroupNode cgn)
+            {
+                cgn.DeInit();
+            }
+
+            currentNode = null;
+        }
+    }
+
+    private void CheckIfReturnTriggerNode()
+    {
+        if (currentNode is ReturnTriggerNode)
+        {
+            if (TriggerManager.instance.traversers.Contains(this))
+            {
+                TriggerManager.instance.traversers.Remove(this);
+            }
+            if (nextNode != null)
+            {
+                nextTraverser.SetNode(nextNode);
+            }
+
+            return;
+        }
+    }
+
 
     protected override void Traverse()
     {
         while (true)
         {
-
             if (currentNode == null)
             {
-                if (TriggerManager.instance.traversers.Contains(this))
-                {
-                    TriggerManager.instance.traversers.Remove(this);
-                }
-
-
-                return;
-            }
-
-            if (currentNode is ReturnTriggerNode)
-            {
+                Debug.Log("Trigger Traverser now ending");
                 if (TriggerManager.instance.traversers.Contains(this))
                 {
                     TriggerManager.instance.traversers.Remove(this);
@@ -59,6 +93,8 @@ public class TriggerTraverser : Traverser
 
                 return;
             }
+
+            CheckIfReturnTriggerNode();
 
             if (currentNode is ConditionGroupNode groupNode)
             {

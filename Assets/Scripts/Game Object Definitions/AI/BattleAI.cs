@@ -51,6 +51,12 @@ public class BattleAI : AIModule
     List<AITarget> AITargets = new List<AITarget>();
     Dictionary<EnergyRock, Turret> harvesterTurrets = new Dictionary<EnergyRock, Turret>();
 
+    public void OnEntityDeath()
+    {
+        collectTarget = null;
+        findNewTarget = true;
+    }
+
     public BattleState GetState()
     {
         return state;
@@ -73,6 +79,7 @@ public class BattleAI : AIModule
     {
         carriers = new List<Entity>();
         harvesterTurrets = new Dictionary<EnergyRock, Turret>();
+        collectTarget = null;
 
         Entity[] targetEntities = BattleZoneManager.getTargets();
         if (targetEntities == null)
@@ -276,8 +283,10 @@ public class BattleAI : AIModule
 
     private void AttackBattleState()
     {
+        bool moveToTank = false;
         if (shellcore.GetTractorTarget() == null)
         {
+            moveToTank = AttemptFindTank();
             if (attackTurret == null)
             {
                 Turret t = null;
@@ -322,7 +331,7 @@ public class BattleAI : AIModule
             //    Debug.Log("AggroTarget: " + primaryTarget.name + " Factions: " + primaryTarget.faction + " - " + craft.faction);
         }
 
-        if (primaryTarget != null)
+        if (primaryTarget != null && (!moveToTank || Vector2.SqrMagnitude(shellcore.transform.position - primaryTarget.transform.position) * 2 < Vector2.SqrMagnitude((Vector2)ai.movement.GetTarget() - (Vector2)primaryTarget.transform.position) + Vector2.SqrMagnitude((Vector2)ai.movement.GetTarget() - (Vector2)shellcore.transform.position)))
         {
             ai.movement.SetMoveTarget(primaryTarget.transform.position);
             //craft.MoveCraft((primaryTarget.transform.position - craft.transform.position).normalized);
@@ -418,18 +427,17 @@ public class BattleAI : AIModule
 
     void UpdateTargetInfluences()
     {
-        // this code doesn't do anything so I'm commenting it out for now
         /*
-                for (int i = 0; i < AITargets.Count; i++)
+        for (int i = 0; i < AITargets.Count; i++)
         {
             var t = AITargets[i];
-            var ent = t.transform.GetComponent<Entity>();
-            if (t.transform == null || t.transform.GetIsDead())
+            if (!t.transform)
             {
-                Debug.Log("AI Warning: AI target null or dead!"); //Better set this issue aside for later, uncertain how this will be fixed
                 continue;
             }
 
+            var ent = t.transform.GetComponent<Entity>();
+            if (!ent || ent.GetIsDead()) continue;
             t.influence = 0f;
             for (int j = 0; j < AIData.entities.Count; j++)
             {
@@ -437,7 +445,7 @@ public class BattleAI : AIModule
                 {
                     if ((turret.transform.position - t.transform.transform.position).sqrMagnitude < 150f)
                     {
-                        t.influence += FactionManager.IsAllied(turret.faction, t.transform.faction) ? 1f : -1f;
+                        t.influence += FactionManager.IsAllied(turret.faction, ent.faction) ? 1f : -1f;
                     }
                 }
             }
@@ -475,7 +483,7 @@ public class BattleAI : AIModule
 
             for (int i = 0; i < AIData.entities.Count; i++)
             {
-                if (AIData.entities[i] is Turret turret)
+                if (AIData.entities[i] is Turret turret && turret.entityName != "Harvester Turret")
                 {
                     float d = (craft.transform.position - turret.transform.position).sqrMagnitude;
                     float d2 = (fortificationTarget.transform.position - turret.transform.position).sqrMagnitude;
@@ -495,7 +503,7 @@ public class BattleAI : AIModule
                 return;
             }
         }
-        else if (attackTurret && shellcore.GetTractorTarget() != attackTurret)
+        else if (attackTurret && shellcore.GetTractorTarget() != attackTurret.GetComponent<Draggable>())
         {
             ai.movement.SetMoveTarget(attackTurret.transform.position, 100f);
             if (ai.movement.targetIsInRange())
@@ -512,12 +520,16 @@ public class BattleAI : AIModule
         }
         else
         {
+            ai.movement.SetMoveTarget(fortificationTarget.transform.position, 5f);
             Vector2 turretDelta = fortificationTarget.transform.position - attackTurret.transform.position;
             Vector2 targetPosition = (Vector2)fortificationTarget.transform.position + turretDelta.normalized * 16f;
             Vector2 delta = targetPosition - (Vector2)craft.transform.position;
             if (turretDelta.sqrMagnitude < 16f)
             {
                 shellcore.SetTractorTarget(null);
+                state = BattleState.Attack;
+                ActionTick();
+                nextStateCheckTime += 1f;
             }
         }
 
@@ -541,9 +553,9 @@ public class BattleAI : AIModule
                 index = i;
                 continue;
             }
-            var ent = AITargets[i].transform.GetComponent<Entity>();
+            var bunker = AITargets[i].transform.GetComponent<Bunker>();
             if (((towerBase && !towerBase.TowerActive()) || 
-                (!foundTowerBase && ent && ent.Terrain == Entity.TerrainType.Ground && ent.faction == shellcore.faction)) && 
+                (!foundTowerBase && bunker && bunker.faction == shellcore.faction)) && 
                 Vector2.SqrMagnitude(craft.transform.position - AITargets[i].transform.transform.position) < dist)
             {
                 dist = Vector2.SqrMagnitude(craft.transform.position - AITargets[i].transform.position);
@@ -554,7 +566,13 @@ public class BattleAI : AIModule
         {
             ai.movement.SetMoveTarget(AITargets[index].transform.position);
         }
+        /*else{
+            AttemptFindTank();
+        }*/
     }
+    
+
+
 
     private void UpdateWaitingDraggable()
     {
@@ -585,7 +603,7 @@ public class BattleAI : AIModule
 
             foreach (var rock in AIData.energyRocks)
             {
-                if ((rock.transform.position - shellcore.transform.position).sqrMagnitude > 150f)
+                if ((rock.transform.position - shellcore.GetTractorTarget().GetComponent<Turret>().transform.position).sqrMagnitude > 125f)
                 {
                     continue;
                 }
@@ -609,14 +627,15 @@ public class BattleAI : AIModule
     private int AttemptCollectEnergy()
     {
         int energyCount = 0;
-        if (shellcore.GetTractorTarget() != null && shellcore.GetTractorTarget().gameObject.GetComponent<EnergySphereScript>() == null)
+        if (shellcore.GetTractorTarget() && shellcore.GetTractorTarget().gameObject.GetComponent<EnergySphereScript>() == null)
         {
             for (int i = 0; i < AIData.energySpheres.Count; i++)
             {
                 if ((AIData.energySpheres[i].transform.position - shellcore.transform.position).sqrMagnitude < 150)
                 {
                     energyCount++;
-                    if (shellcore.GetTractorTarget() != null)
+                    var target = shellcore.GetTractorTarget();
+                    if (!(target && target.GetComponent<Turret>() is Turret turret && turret.entityName == "Harvester Turret"))
                     {
                         waitingDraggable = shellcore.GetTractorTarget();
                         shellcore.SetTractorTarget(null);
@@ -676,9 +695,9 @@ public class BattleAI : AIModule
                 mostNeeded = AIEquivalent.SpeederTank;
             }
         }
-        else if (numEnemyGroundStations + numEnemyTanks > numOwnTanks)
+        else if (2 * numEnemyGroundStations + numEnemyTanks > numOwnTanks)
         {
-            if (shellcore.GetPower() >= 150 || Random.Range(0, 3) == 1)
+            if (shellcore.GetPower() >= 150 || Random.Range(0, 3) <= 1)
             {
                 if (GetItemEnabled(AIEquivalent.BeamTank) && (!GetItemEnabled(AIEquivalent.SiegeTank) || Random.Range(0, 3) == 0))
                 {
@@ -779,7 +798,7 @@ public class BattleAI : AIModule
 
             if (state == BattleState.Attack)
             {
-                if ((int)vendor.GetVendingBlueprint().items[0].equivalentTo < 6)
+                if ((int)vendor.GetVendingBlueprint().items[0].equivalentTo >= 6)
                 {
                     bool ownGroundExists = false;
                     for (int j = 0; j < AIData.entities.Count; j++)
@@ -905,6 +924,9 @@ public class BattleAI : AIModule
                                 shellcore.GetTractorTarget().GetComponent<Turret>()
                                 && shellcore.GetTractorTarget().GetComponent<Turret>().entityName == "Harvester Turret";
 
+        AttemptMoveTank();
+        var hasTank = shellcore.GetTractorTarget() && shellcore.GetTractorTarget().GetComponent<Tank>();
+        if (!hasTank && craft && !craft.GetIsDead())
         switch (state)
         {
             case BattleState.Attack:
@@ -930,11 +952,93 @@ public class BattleAI : AIModule
         // always drop harvester turrets on close energy rocks
         AttemptDropHarvesterTurret();
 
-        // always collect energy
-        int energyCount = AttemptCollectEnergy();
+        if (!hasTank)
+        {
+            // always collect energy
+            int energyCount = AttemptCollectEnergy();
 
-        // always buy more turrets/tanks
-        AttemptBuyUnits(energyCount);
+            // always buy more turrets/tanks
+            AttemptBuyUnits(energyCount);
+        }
+
+
+    }
+
+    private bool AttemptFindTank()
+    {
+        if(shellcore.GetTractorTarget() == null && FindTankDropoffFlag() != null){
+            var pickupTargetFlag = FindTankPickupFlag();
+            if (pickupTargetFlag && Vector2.SqrMagnitude(pickupTargetFlag.transform.position - craft.transform.position) > 250F)
+            {
+                ai.movement.SetMoveTarget(pickupTargetFlag.transform.position, 1F);
+                return true;
+            }
+            else if (pickupTargetFlag)
+            {
+                foreach (var tank in AIData.tanks)
+                {
+                    if (!FactionManager.IsAllied(tank.faction, craft.faction)) continue;
+                    if (Vector2.SqrMagnitude(tank.transform.position - pickupTargetFlag.transform.position) > 25) continue;
+                    shellcore.SetTractorTarget(tank.GetComponentInChildren<Draggable>());
+                    break;
+                }
+            }
+        }
+        return false;
+    }
+
+    private void AttemptMoveTank()
+    {
+
+        var hasTank = shellcore.GetTractorTarget() && shellcore.GetTractorTarget().GetComponent<Tank>();
+
+        Flag tankPickupDropoffFlag = null;
+        if (hasTank)
+            tankPickupDropoffFlag = FindTankDropoffFlag();
+
+        if (tankPickupDropoffFlag && Vector2.SqrMagnitude(tankPickupDropoffFlag.transform.position - shellcore.GetTractorTarget().transform.position) > 1F)
+        {
+            ai.movement.SetMoveTarget(tankPickupDropoffFlag.transform.position + (tankPickupDropoffFlag.transform.position - shellcore.GetTractorTarget().transform.position), 1F);
+        }
+        else if (tankPickupDropoffFlag)
+        {
+            tankPickupDropoffFlag = null;
+            shellcore.SetTractorTarget(null);
+        }
+    }
+
+    private Flag FindTankPickupFlag()
+    {
+        foreach (var flag in AIData.flags.OrderBy(x => Vector2.SqrMagnitude(x.transform.position - craft.transform.position)))
+        {
+            if (flag.name != $"tankpickup{craft.faction}") continue;
+            foreach (var tank in AIData.tanks)
+            {
+                if (!FactionManager.IsAllied(tank.faction, craft.faction)) continue;
+                if (Vector2.SqrMagnitude(tank.transform.position - flag.transform.position) > 25) continue;
+                return flag;
+            }
+        }
+        return null;
+    }
+
+    private Flag FindTankDropoffFlag()
+    {
+        foreach (var flag in AIData.flags.OrderBy(x => Vector2.SqrMagnitude(x.transform.position - craft.transform.position)))
+        {
+            if (flag.name != $"tankdropoff{craft.faction}") continue;
+            int alliedPresence = 0;
+            int enemyPresence = 0;
+            foreach(var entity in AIData.entities){
+                if(Vector2.SqrMagnitude(flag.transform.position - entity.transform.position) > 25) continue;
+                if(!(entity as GroundConstruct)) continue;
+                if(entity == shellcore || entity == shellcore.GetTractorTarget().GetComponent<Entity>()) continue;
+                if(entity.faction == craft.faction){alliedPresence++;}
+                else{enemyPresence++;}
+            }
+            if(alliedPresence <= enemyPresence) return flag;
+        }
+        return null;
     }
 
     private bool IsEnemyGroundTargetPresent(bool allEntities)
