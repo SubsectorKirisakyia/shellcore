@@ -127,9 +127,17 @@ public class PartyManager : MonoBehaviour
         UpdatePortraits();
     }
 
-    public void ClearParty()
+    public void ClearParty(bool destroyMembers)
     {
         int i = 0;
+        if (destroyMembers)
+        {
+            foreach (var member in partyMembers)
+            {
+                Destroy(member.gameObject);
+            }
+        }
+        
         while (partyMembers != null && partyMembers.Count > 0 && i < 10)
         {
             UnassignBackend(null, partyMembers[0]);

@@ -240,6 +240,14 @@ public class DevConsoleScript : MonoBehaviour
                     renderers[i].color = new Color(1f, 1f, 1f, 0.1f);
                 }
 
+                var partSys = player.GetComponentInChildren<ParticleSystem>(true);
+                if (partSys)
+                {
+                    var main = partSys.main;
+                    main.startColor = new Color(1f, 1f, 1f, 0.1f);
+                    partSys.Stop();
+                    partSys.Play();
+                }
                 spectateEnabled = true;
 
                 player.GetComponent<TractorBeam>().enabled = false;
@@ -274,6 +282,10 @@ public class DevConsoleScript : MonoBehaviour
                 int tier = 0;
                 int amt = 1;
                 var info = new EntityBlueprint.PartInfo();
+                if (splits.Length < 2)
+                {
+                    textBox.text += "\nUsage: addpart a=<abilityID> t=<tier> c=<count> s=<secondaryData> p=<partID>";
+                }
                 foreach(var split in splits)
                 {
                     if (split.StartsWith("a="))
@@ -330,6 +342,18 @@ public class DevConsoleScript : MonoBehaviour
                     partyMember.KillShellCore();
                 }
                 textBox.text += "\n<color=lime>Killing all party members...</color>";
+            }
+            else if (command.StartsWith("kill ", StringComparison.CurrentCultureIgnoreCase))
+            {
+                string entityID = command.Substring(5).Trim();
+                foreach (var entity in AIData.entities)
+                {
+                    if (entity.ID == entityID) 
+                    {
+                        entity.TakeCoreDamage(9999999);
+                        textBox.text += $"\n<color=lime>Killing entity with ID {entityID}...</color>";
+                    }
+                }
             }
             else if (command.StartsWith("addp ", StringComparison.CurrentCultureIgnoreCase))
             {

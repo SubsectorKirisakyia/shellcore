@@ -12,6 +12,8 @@ public class SettingsScript : MonoBehaviour
     public Toggle HUDArrowScriptToggle;
     public Toggle BackgroundScriptToggle;
     public Toggle RectangleEffectScriptToggle;
+    public Toggle overworldGridToggle;
+    public Toggle coreGlowToggle;
 
     public (int, int)[] resolutions = new (int, int)[] {(1024, 768), (1366, 768), (1600, 900), (1920, 1080), (3840, 2160)};
     public Dropdown windowResolution;
@@ -19,6 +21,7 @@ public class SettingsScript : MonoBehaviour
     public Dropdown dialogueStyle;
     public Dropdown partShader;
     public Toggle taskManagerAutoSaveEnabled;
+    public Toggle rdbServerBuilderCheckEnabled;
     public Toggle simpleMouseMovementToggle;
     public Toggle allowAutocastSkillsToggle;
 
@@ -37,6 +40,8 @@ public class SettingsScript : MonoBehaviour
         HUDArrowScriptToggle.isOn = PlayerPrefs.GetString("HUDArrowScript_active", "False") == "True";
         BackgroundScriptToggle.isOn = PlayerPrefs.GetString("BackgroundScript_active", "True") == "True";
         RectangleEffectScriptToggle.isOn = PlayerPrefs.GetString("RectangleEffectScript_active", "True") == "True";
+        overworldGridToggle.isOn = PlayerPrefs.GetString("OverworldGrid_active", "False") == "True";
+        coreGlowToggle.isOn = PlayerPrefs.GetString("CoreGlow_active", "True") == "True";
         masterSoundSlider.value = PlayerPrefs.GetFloat("MasterVolume", 0.5f);
         hudDamageIndicatorSlider.value = PlayerPrefs.GetFloat("HealthBarScript_hudDamageIndicator", 0.5F);
         musicSlider.value = PlayerPrefs.GetFloat("MusicVolume", 1f);
@@ -46,6 +51,7 @@ public class SettingsScript : MonoBehaviour
         taskManagerAutoSaveEnabled.isOn = PlayerPrefs.GetString("TaskManager_autoSaveEnabled", "True") == "True";
         simpleMouseMovementToggle.isOn = PlayerPrefs.GetString("SelectionBoxScript_simpleMouseMovement", "True") == "True";
         allowAutocastSkillsToggle.isOn = PlayerPrefs.GetString("AllowAutocastSkills", "False") == "True";
+        rdbServerBuilderCheckEnabled.isOn = PlayerPrefs.GetString("ShipBuilder_rdbServerValidity", "False") == "True";
         SaveSettings();
 
         //for(int i = 0; i < 9; i++)
@@ -121,11 +127,19 @@ public class SettingsScript : MonoBehaviour
         ChangeShellPartPartShader(partShader.value);
         ChangeHudDamageIndicator(hudDamageIndicatorSlider.value);
         ChangeAllowAutocastSkillsEnabled(allowAutocastSkillsToggle.isOn);
+        ChangeOverworldGridActive(overworldGridToggle.isOn);
+        ChangeCoreGlowActive(coreGlowToggle.isOn);
+        ChangerdbserverEnabled(rdbServerBuilderCheckEnabled.isOn);
 
         //for(int i = 0; i < 9; i++)
         //{
         //	ChangeAbilityKeybind(i, abilityKeybindFields[i].text);
         //}
+    }
+
+    public void ChangerdbserverEnabled(bool val)
+    {
+        PlayerPrefs.SetString("ShipBuilder_rdbServerValidity", val.ToString());
     }
 
     public void ChangeMasterVolume(float newVol)
@@ -160,7 +174,7 @@ public class SettingsScript : MonoBehaviour
 	    Screen.fullScreenMode = val ? FullScreenMode.Windowed : FullScreenMode.FullScreenWindow;
         if (!val)
         {
-            Screen.SetResolution(Display.main.systemWidth, Display.main.systemHeight, FullScreenMode.FullScreenWindow, 0);
+            Screen.SetResolution(Display.main.systemWidth, Display.main.systemHeight, FullScreenMode.FullScreenWindow);
         }
 #endif
     }
@@ -204,6 +218,23 @@ public class SettingsScript : MonoBehaviour
     {
         PlayerPrefs.SetString("RectangleEffectScript_active", val.ToString());
         RectangleEffectScript.SetActive(val);
+    }
+
+
+    public void ChangeOverworldGridActive(bool val)
+    {
+        PlayerPrefs.SetString("OverworldGrid_active", val.ToString());
+        OverworldGrid.SetActive(val);
+    }
+
+
+    public void ChangeCoreGlowActive(bool val)
+    {
+        PlayerPrefs.SetString("CoreGlow_active", val.ToString());
+        foreach (var ent in AIData.entities)
+        {
+            ent.SetCoreGlowActive(val);
+        }
     }
 
     public void ChangeDialogueSystemDialogueStyle(int val)

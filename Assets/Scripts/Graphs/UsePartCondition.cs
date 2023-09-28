@@ -1,4 +1,5 @@
-﻿using UnityEngine;
+﻿using System.Collections.Generic;
+using UnityEngine;
 using UnityEngine.Events;
 
 namespace NodeEditorFramework.Standard
@@ -20,9 +21,14 @@ namespace NodeEditorFramework.Standard
             get { return "Use Part"; }
         }
 
-        public override Vector2 DefaultSize
+        public override Vector2 MinSize
         {
             get { return new Vector2(200, 180); }
+        }
+
+        public override bool AutoLayout
+        {
+            get { return true; }
         }
 
         public ConditionState state; // Property can't be serialized -> field
@@ -39,10 +45,22 @@ namespace NodeEditorFramework.Standard
         public string partID;
         public int abilityID;
         public string sectorName;
+        public bool useCustomCount;
+        public int selectedPartCount;
+        public bool useCustomSecondaryData;
+        public string secondaryData;
+        public bool checkTotalPartCount;
+        public int totalPartCount;
+        public bool removeSelectedParts;
 
         public override void NodeGUI()
         {
             output.DisplayLayout();
+            if (checkTotalPartCount = Utilities.RTEditorGUI.Toggle(checkTotalPartCount, "Check total part count: "))
+            {
+                totalPartCount = Utilities.RTEditorGUI.IntField("Total part count: ", totalPartCount);
+                return;
+            }
             GUILayout.Label("Part ID:");
             partID = GUILayout.TextField(partID);
             abilityID = Utilities.RTEditorGUI.IntField("Ability ID: ", abilityID);
@@ -53,6 +71,17 @@ namespace NodeEditorFramework.Standard
             }
             GUILayout.Label("Sector name for part to come from:");
             sectorName = GUILayout.TextField(sectorName);
+            if (useCustomCount = Utilities.RTEditorGUI.Toggle(useCustomCount, "Use custom count: "))
+            {
+                selectedPartCount = Utilities.RTEditorGUI.IntField("Part count: ", selectedPartCount);
+            }
+
+            if (useCustomSecondaryData = Utilities.RTEditorGUI.Toggle(useCustomSecondaryData, "Use custom secondary data: "))
+            {
+                GUILayout.Label("Secondary data:");
+                secondaryData = GUILayout.TextField(secondaryData);
+            }
+            removeSelectedParts = Utilities.RTEditorGUI.Toggle(removeSelectedParts, "Remove selected parts: ");
         }
 
         TaskManager.ObjectiveLocation objectiveLocation;
@@ -62,6 +91,7 @@ namespace NodeEditorFramework.Standard
             OnPlayerReconstruct.AddListener(CheckParts);
             State = ConditionState.Listening;
             TryAddObjective(true);
+            CheckParts();
         }
 
         public void DeInit()
@@ -78,16 +108,49 @@ namespace NodeEditorFramework.Standard
 
         public void CheckParts()
         {
+            
+            var parts = SectorManager.instance.player.blueprint.parts;
+            if (parts == null) return;
+            if (checkTotalPartCount)
+            {
+                if (parts.Count != totalPartCount) return;
+                State = ConditionState.Completed;
+                connectionKnobs[0].connection(0).body.Calculate();
+                return;
+            }
+            var count = 0;
+            var partsToRemove = new List<EntityBlueprint.PartInfo>();
             if (string.IsNullOrEmpty(sectorName) || ShipBuilder.CheckForOrigin(sectorName, (partID, abilityID)))
             {
-                var parts = SectorManager.instance.player.blueprint.parts;
                 for (int i = 0; i < parts.Count; i++)
                 {
-                    if (parts[i].partID == partID && parts[i].abilityID == abilityID)
+                    if ((string.IsNullOrEmpty(partID) || parts[i].partID == partID) && parts[i].abilityID == abilityID)
                     {
                         if (!string.IsNullOrEmpty(sectorName))
                         {
                             ShipBuilder.RemoveOrigin(sectorName, (partID, abilityID));
+                        }
+
+                        if (useCustomSecondaryData && secondaryData != parts[i].secondaryData)
+                        {
+                            continue;
+                        }
+
+                        if (useCustomCount && count < selectedPartCount - 1)
+                        {
+                            count++;
+                            if (removeSelectedParts)
+                            {
+                                partsToRemove.Add(parts[i]);
+                            }
+                            continue;
+                        }
+
+                        if (removeSelectedParts)
+                        {
+                            partsToRemove.Add(parts[i]);
+                            partsToRemove.ForEach(p => parts.Remove(p));
+                            PlayerCore.Instance.Rebuild();
                         }
 
                         State = ConditionState.Completed;

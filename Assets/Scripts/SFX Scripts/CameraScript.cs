@@ -47,13 +47,14 @@ public class CameraScript : MonoBehaviour
                     rect.Start();
                 }
             }
+            if (OverworldGrid.instance) OverworldGrid.instance.Initialize();
         }
     }
 
     // returns max zoom level based on player core tier
     public static float GetMaxZoomLevel()
     {
-        if (!PlayerCore.Instance)
+        if (!PlayerCore.Instance || !PlayerCore.Instance.blueprint)
         {
             return 10;
         }
