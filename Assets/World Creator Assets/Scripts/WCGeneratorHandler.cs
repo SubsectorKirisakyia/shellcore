@@ -197,6 +197,7 @@ public class WCGeneratorHandler : MonoBehaviour
         Debug.Log("Writing world...");
 
         // Folder paths
+        var coreScriptsPlaceholderPath = System.IO.Path.Combine(Application.streamingAssetsPath, "CoreScriptsPlaceholder");
         var canvasPlaceholderPath = System.IO.Path.Combine(Application.streamingAssetsPath, "CanvasPlaceholder");
         var entityPlaceholderPath = System.IO.Path.Combine(Application.streamingAssetsPath, "EntityPlaceholder");
         var wavePlaceholderPath = System.IO.Path.Combine(Application.streamingAssetsPath, "WavePlaceholder");
@@ -384,7 +385,7 @@ public class WCGeneratorHandler : MonoBehaviour
                              "siege_turret", "harvester_turret", "missile_turret", "torpedo_turret", "mini_drone_blueprint", "worker_drone_blueprint",
                              "strike_drone_blueprint", "light_drone_blueprint", "gun_drone_blueprint", "counter_drone_blueprint", 
                              "torpedo_drone_blueprint", "heavy_drone_blueprint", "speeder_tank", "bullet_tank", 
-                             "missile_tank", "beam_tank", "laser_tank", "rocket_tank"};
+                             "missile_tank", "beam_tank", "laser_tank", "rocket_tank", "yard_blueprint", "trader_blueprint"};
 
                     if (ent.assetID == "shellcore_blueprint" || charExists)
                     {
@@ -659,6 +660,7 @@ public class WCGeneratorHandler : MonoBehaviour
             File.Copy(resourceTxtPath, System.IO.Path.Combine(path, "ResourceData.txt"));
         }
 
+        TryCopy(coreScriptsPlaceholderPath, System.IO.Path.Combine(path, "CoreScripts"));
         TryCopy(canvasPlaceholderPath, System.IO.Path.Combine(path, "Canvases"));
         TryCopy(entityPlaceholderPath, System.IO.Path.Combine(path, "Entities"));
         TryCopy(wavePlaceholderPath, System.IO.Path.Combine(path, "Waves"));
@@ -802,6 +804,9 @@ public class WCGeneratorHandler : MonoBehaviour
                 {
                     ResourceManager.Instance.LoadResources(SectorManager.testResourcePath);
                 }
+
+                // copying core scripts
+                TryCopy(System.IO.Path.Combine(path, "CoreScripts"), System.IO.Path.Combine(Application.streamingAssetsPath, "CoreScriptsPlaceholder"));
 
                 // copying canvases
                 TryCopy(System.IO.Path.Combine(path, "Canvases"), System.IO.Path.Combine(Application.streamingAssetsPath, "CanvasPlaceholder"));
@@ -1016,7 +1021,7 @@ public class WCGeneratorHandler : MonoBehaviour
         }
 
 
-        if (blueprint.intendedType == EntityBlueprint.IntendedType.ShellCore && entity.faction != 0)
+        if (blueprint.intendedType == EntityBlueprint.IntendedType.ShellCore && !FactionManager.IsAllied(0, entity.faction))
         {
             if (blueprint.parts != null)
             {

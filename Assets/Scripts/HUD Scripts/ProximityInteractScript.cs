@@ -19,12 +19,14 @@ public class ProximityInteractScript : MonoBehaviour
     public static ProximityInteractScript instance;
     public static Dictionary<ShellCore, RectTransform> playerNames;
     public GameObject playerNamePrefab;
+    public static Dictionary<Flag, RectTransform> overworldTexts = new Dictionary<Flag, RectTransform>();
 
     void Awake()
     {
         instance = this;
         if (playerNames == null)
             playerNames = new Dictionary<ShellCore, RectTransform>();
+        overworldTexts.Clear();
     }
 
     public static void ActivateInteraction(IInteractable interactable)
@@ -67,6 +69,7 @@ public class ProximityInteractScript : MonoBehaviour
             if (!Input.GetKeyDown((1 + i).ToString())) continue;
             vendorUI.SetVendor(vendor, player);
             vendorUI.onButtonPressed(i);
+            break;
         }
     }
 
@@ -77,10 +80,20 @@ public class ProximityInteractScript : MonoBehaviour
 
     void focus()
     {
+            foreach (var flag in overworldTexts.Keys)
+            {
+                if (!flag) continue;
+                var rt = overworldTexts[flag];
+                var worldToScreenPoint = Camera.main.WorldToScreenPoint(flag.transform.position);
+                worldToScreenPoint.x *= UIScalerScript.GetScale();
+                worldToScreenPoint.y *= UIScalerScript.GetScale();
+                rt.anchoredPosition = worldToScreenPoint;
+            }
+
         foreach (var core in playerNames.Keys)
         {
             if (!core) continue;
-            playerNames[core].gameObject.SetActive(!core.GetIsDead() && (!PlayerCore.Instance || (core.StealthStacks == 0 || PlayerCore.Instance.faction == core.faction)));
+            playerNames[core].gameObject.SetActive(!core.GetIsDead() && (!PlayerCore.Instance || (core.StealthStacks == 0 || FactionManager.IsAllied(PlayerCore.Instance.faction, core.faction))));
             if (!playerNames[core].gameObject.activeSelf) continue;
             var worldToScreenPoint = Camera.main.WorldToScreenPoint(core.GetTransform().position);
             worldToScreenPoint.x *= UIScalerScript.GetScale();
@@ -131,5 +144,26 @@ public class ProximityInteractScript : MonoBehaviour
                 ActivateInteraction(closest); // key received; activate interaction
             }
         }
+    }
+
+    [SerializeField]
+    private GameObject textBox;
+    public static void AddTextToFlag(string text, Flag flag)
+    {
+        if (!instance) return;
+        var x = Instantiate(instance.textBox, instance.interactIndicator.transform.parent);
+        var t = x.GetComponentInChildren<Text>();
+        t.text = text;
+        float textWidth = LayoutUtility.GetPreferredWidth(t.rectTransform);
+        if (textWidth <= t.rectTransform.sizeDelta.x) t.alignment = TextAnchor.MiddleCenter;
+        if (overworldTexts.ContainsKey(flag)) RemoveFlagText(flag);
+        overworldTexts.Add(flag, x.GetComponent<RectTransform>());
+    }
+
+    public static void RemoveFlagText(Flag flag)
+    {
+        if (!overworldTexts.ContainsKey(flag)) return;
+        Destroy(overworldTexts[flag].gameObject);
+        overworldTexts.Remove(flag);
     }
 }

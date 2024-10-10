@@ -75,7 +75,7 @@ public class Flak : WeaponAbility
         }
         else
         {
-            targets = GetClosestTargets(BULLET_COUNT, true);
+            targets = targetingSystem.GetClosestTargets(BULLET_COUNT, true);
         }
 
 
@@ -117,9 +117,9 @@ public class Flak : WeaponAbility
             script.SetTerrain(type == WeaponDiversityType.Torpedo ? Entity.TerrainType.Ground : script.owner.Terrain);
             script.SetShooterFaction(Core.faction);
             script.SetPierceFactor(pierceFactor);
-            script.particleColor = part && part.info.shiny ? FactionManager.GetFactionShinyColor(Core.faction) : new Color(0.8F, 1F, 1F, 0.9F);
+            script.particleColor = part && part.info.shiny ? FactionManager.GetFactionShinyColor(Core.faction.factionID) : new Color(0.8F, 1F, 1F, 0.9F);
             script.missParticles = true;
-            script.disableDrones = true;
+            script.disableDrones = gasBoosted;
 
             var normalizedVec = Vector3.Normalize(relativeDistance + targetVelocity * t);
             //var angle = (-(bullets / 2) + i) * 20;

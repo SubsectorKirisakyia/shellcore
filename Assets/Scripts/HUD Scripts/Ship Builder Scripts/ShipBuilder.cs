@@ -60,6 +60,14 @@ public class ShipBuilder : GUIWindowScripts
     private bool[] displayingTypes;
     [SerializeField]
     private GameObject jsonButtonHolder;
+    [SerializeField]
+    private ShpBuilderSearch searchBar;
+    [SerializeField]
+    private ShipBuilderPartDisplay partDisplay;
+    [SerializeField]
+    private RectTransform partsListScrollViewRectTransform;
+    [SerializeField]
+    private GameObject clearConfirmerBox;
 
     public void RemoveKeyFromPartDict(EntityBlueprint.PartInfo info)
     {
@@ -760,14 +768,24 @@ public class ShipBuilder : GUIWindowScripts
         droneSpawnData = DroneUtilities.GetDroneSpawnDataByShorthand(dronePart.secondaryData);
         droneWorkshopPhaseHider.SetActive(false);
         cursorScript.ClearAllParts();
+        searcherString = "";
         if (sortingObject)
         {
             sortingObject.SetActive(true);
+            
+            for (int i = 0; i < displayingTypes.Length; i++)
+            {
+                displayingTypes[i] = true;
+            }
+            
             foreach (var sortingButton in sortingButtons) 
             {
                 sortingButton.DroneWorkshopModifications();
             }
+
+            searchBar.input.text = "";
         }
+
         var parts = new List<EntityBlueprint.PartInfo>();
         SetUpInventory(parts);
         foreach(var part in parts)
@@ -775,6 +793,10 @@ public class ShipBuilder : GUIWindowScripts
             AddPart(part);
         }
         LoadBlueprint(DroneUtilities.GetDroneSpawnDataByShorthand(info.secondaryData).drone);
+        foreach (var part in cursorScript.parts)
+        {
+            part.mode = BuilderMode.Workshop;
+        }
     }
 
     private string blueprintCoreShellSpriteId;
@@ -805,8 +827,6 @@ public class ShipBuilder : GUIWindowScripts
         Activate();
         cursorScript.gameObject.SetActive(false);
         cursorScript.SetBuilder(this, droneWorkshopPhaseHider);
-
-        GetComponentInChildren<ShipBuilderPartDisplay>().Initialize(this);
 
         // set up actual stats
         this.mode = mode;
@@ -981,7 +1001,7 @@ public class ShipBuilder : GUIWindowScripts
 
             if (initialShards != player.cursave.shards)
             {
-                ShardCountScript.DisplayCount(player.cursave.shards);
+                ShardCountScript.DisplayCount();
             }
 
             foreach (ShellPart part in partsToAdd)
@@ -1372,6 +1392,7 @@ public class ShipBuilder : GUIWindowScripts
 
     public void LoadBlueprint(EntityBlueprint blueprint)
     {
+
         if (editorMode)
         {
             cursorScript.ClearAllParts();
@@ -1417,7 +1438,7 @@ public class ShipBuilder : GUIWindowScripts
 #if UNITY_EDITOR
         else
         {
-            AssetDatabase.CreateAsset(blueprint, System.IO.Path.Combine("Assets", "SavedPrint.asset"));
+            //AssetDatabase.CreateAsset(blueprint, System.IO.Path.Combine("Assets", "SavedPrint.asset"));
         }
 #endif
     }
@@ -1583,9 +1604,26 @@ public class ShipBuilder : GUIWindowScripts
         NodeEditorFramework.Standard.UsePartCondition.OnPlayerReconstruct.Invoke();
     }
 
+    public void RequestClearParts()
+    {
+        if (clearConfirmerBox.activeSelf)
+        {
+            clearConfirmerBox.SetActive(false);
+            cursorScript.ClearAllParts();
+        }
+        else
+        {
+            clearConfirmerBox.SetActive(true);
+        }
+    }
+
+
     protected override void Update()
     {
         base.Update();
+
+        UpdatePartInfo();
+        
         if (!editorMode)
         {
             if ((player.transform.position - yardPosition).sqrMagnitude > 200 || player.GetIsDead())
@@ -1663,14 +1701,17 @@ public class ShipBuilder : GUIWindowScripts
         public List<EntityBlueprint.PartInfo> parts;
     }
 
-    public EntityBlueprint.PartInfo? GetButtonPartCursorIsOn()
+    public EntityBlueprint.PartInfo? GetInfoForHoveredPart()
     {
-        foreach (ShipBuilderInventoryScript inv in partDict.Values)
+        if (RectTransformUtility.RectangleContainsScreenPoint(partsListScrollViewRectTransform, Input.mousePosition))
         {
-            if (RectTransformUtility.RectangleContainsScreenPoint(inv.GetComponent<RectTransform>(), Input.mousePosition)
-                && inv.gameObject.activeSelf)
+            foreach (ShipBuilderInventoryScript inv in partDict.Values)
             {
-                return inv.part;
+                if (RectTransformUtility.RectangleContainsScreenPoint(inv.GetComponent<RectTransform>(), Input.mousePosition)
+                    && inv.gameObject.activeSelf)
+                {
+                    return inv.part;
+                }
             }
         }
 
@@ -1683,7 +1724,7 @@ public class ShipBuilder : GUIWindowScripts
             }
         }
 
-        return null;
+        return cursorScript.GetInfoForHoveredPartInGrid();
     }
 
     public void ChangeDisplayFactors()
@@ -1713,7 +1754,7 @@ public class ShipBuilder : GUIWindowScripts
             if (partName.Contains(searcherString) || abilityName.Contains(searcherString) || searcherString == "")
             {
                 if (displayingTypes[(int)AbilityUtilities.GetAbilityTypeByID(inv.part.abilityID)] && 
-                    (mode != BuilderMode.Workshop || ResourceManager.GetAsset<PartBlueprint>(inv.part.partID).size == 0))
+                    (mode != BuilderMode.Workshop || GetDroneWorkshopSelectPhase() || ResourceManager.GetAsset<PartBlueprint>(inv.part.partID).size == 0))
                 {
                     inv.gameObject.SetActive(true);
                     contentTexts[ResourceManager.GetAsset<PartBlueprint>(inv.part.partID).size].SetActive(true);
@@ -1802,6 +1843,20 @@ public class ShipBuilder : GUIWindowScripts
         ChangeDisplayFactors();
     }
 
+    private void UpdatePartInfo()
+    {
+        EntityBlueprint.PartInfo? part = GetInfoForHoveredPart();
+
+        if (part != null)
+        {
+            partDisplay.DisplayPartInfo((EntityBlueprint.PartInfo)part);
+        }
+        else
+        {
+            partDisplay.SetInactive();
+        }
+    }
+
     public override bool GetActive()
     {
         return gameObject.activeSelf;
@@ -1816,31 +1871,5 @@ public class ShipBuilder : GUIWindowScripts
         }
 
         base.OnPointerDown(eventData);
-    }
-
-    public EntityBlueprint.PartInfo? RequestInventoryMouseOverInfo()
-    {
-        foreach (var part in partDict)
-        {
-            if (RectTransformUtility.RectangleContainsScreenPoint(part.Value.GetComponent<RectTransform>(), Input.mousePosition) &&
-                part.Value.gameObject.activeSelf)
-            {
-                return part.Key;
-            }
-        }
-
-        if (traderPartDict != null)
-        {
-            foreach (var part in traderPartDict)
-            {
-                if (RectTransformUtility.RectangleContainsScreenPoint(part.Value.GetComponent<RectTransform>(), Input.mousePosition) &&
-                    part.Value.gameObject.activeSelf)
-                {
-                    return part.Key;
-                }
-            }
-        }
-
-        return null;
     }
 }

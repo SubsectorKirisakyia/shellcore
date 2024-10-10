@@ -11,6 +11,8 @@ public class Beam : WeaponAbility
     public static readonly int beamDamage = 525;
     protected List<Transform> targetArray;
 
+    protected int numShots = 0;
+    protected int MAX_BOUNCES = 1;
 
     protected override void Awake()
     {
@@ -36,8 +38,8 @@ public class Beam : WeaponAbility
     protected void SetUpCosmetics()
     {
         SetMaterial(ResourceManager.GetAsset<Material>("white_material"));
-        line.endColor = part && part.info.shiny ? FactionManager.GetFactionShinyColor(Core.faction) : new Color(0.8F, 1F, 1F, 0.9F);
-        line.startColor = part && part.info.shiny ? FactionManager.GetFactionShinyColor(Core.faction) : new Color(0.8F, 1F, 1F, 0.9F);
+        line.endColor = part && part.info.shiny ? FactionManager.GetFactionShinyColor(Core.faction.factionID) : new Color(0.8F, 1F, 1F, 0.9F);
+        line.startColor = part && part.info.shiny ? FactionManager.GetFactionShinyColor(Core.faction.factionID) : new Color(0.8F, 1F, 1F, 0.9F);
         if (!beamHitPrefab)
         {
             beamHitPrefab = ResourceManager.GetAsset<GameObject>("weapon_hit_particle");
@@ -67,23 +69,92 @@ public class Beam : WeaponAbility
         {
             line.startWidth = line.endWidth = 0.15F;
             line.SetPosition(0, transform.position); // draw and increment timer
-            if (nextTargetPart && !MasterNetworkAdapter.lettingServerDecide)
+            if (currentVertex+1 < line.positionCount)
             {
-                line.SetPosition(currentVertex+1, partPos);
+                if (nextTargetPart && !MasterNetworkAdapter.lettingServerDecide)
+                {
+                    line.SetPosition(currentVertex + 1, partPos);
+                }
+                else if (targetArray.Count > currentVertex && targetArray[currentVertex])
+                {
+                    line.SetPosition(currentVertex + 1, targetArray[currentVertex].position);
+                }
+                else if (!MasterNetworkAdapter.lettingServerDecide)
+                {
+                    line.SetPosition(currentVertex + 1, line.transform.position); // TODO: Fix
+                }
             }
-            else if (targetArray.Count > currentVertex && targetArray[currentVertex])
-            {
-                line.SetPosition(currentVertex+1, targetArray[currentVertex].position);
-            }
-            else if (!MasterNetworkAdapter.lettingServerDecide)
-            {
-                line.SetPosition(currentVertex+1, line.transform.position); // TODO: Fix
-            }
-
-            if (currentVertex == line.positionCount - 2)
-                timer += Time.deltaTime * Time.timeScale;
         }
-        else if (firing && timer >= 0.1F*(currentVertex+1) && currentVertex == line.positionCount - 2)
+    }
+
+    protected virtual void Update()
+    {
+        if (DialogueSystem.isInCutscene || (Core && Core.IsInvisible))
+        {
+            line.startWidth = line.endWidth = 0;
+            firing = false;
+            line.positionCount = 0;
+            numShots = 0;
+        }
+
+        if (!firing)
+        {
+            numShots = 0;
+            if (!(this is ChainBeam))
+            {
+                MAX_BOUNCES = gasBoosted ? 3 : 1;
+            }
+            else MAX_BOUNCES = 3;
+            return;
+        }
+
+        if (firing)
+            timer += Time.deltaTime;
+
+        if (timer > 0.1f * numShots && numShots < MAX_BOUNCES)
+        {
+            var vec = numShots == 0 ? transform.position : line.GetPosition(numShots);
+            var closestEntity = targetingSystem.GetTarget();
+
+            if (closestEntity && !targetArray.Contains(closestEntity) && numShots == 0)
+            {
+                targetArray.Add(closestEntity);
+                FireBeam(closestEntity.position);
+                numShots++;
+            }
+            else
+            {
+                var ents = GetClosestTargets(MAX_BOUNCES, vec);
+                closestEntity = null;
+                foreach (var ent in ents)
+                {
+                    if (targetArray.Contains(ent))
+                    {
+                        continue;
+                    }
+                    closestEntity = ent;
+                    break;
+                }
+
+                if (!closestEntity)
+                {
+                    //numShots = 0;
+                }
+                else
+                {
+                    targetArray.Add(closestEntity);
+                    FireBeam(closestEntity.position);
+                    numShots++;
+                }
+            }
+        }
+
+        for (int i = 0; i < line.positionCount; i++)
+        {
+            RenderBeam(i);
+        }
+
+        if (firing && timer >= 0.1F * line.positionCount)
         {
             if (line.startWidth > 0)
             {
@@ -96,18 +167,9 @@ public class Beam : WeaponAbility
                 line.startWidth = line.endWidth = 0;
                 firing = false;
                 line.positionCount = 0;
+                numShots = 0;
             }
         }
-        else if (currentVertex == line.positionCount - 2)
-        {
-            line.positionCount = 0;
-            firing = false;
-        }
-    }
-
-    protected virtual void Update()
-    {
-        RenderBeam(0);
     }
 
     protected override bool Execute(Vector3 victimPos)
@@ -117,8 +179,8 @@ public class Beam : WeaponAbility
             SetUpCosmetics();
         }
         targetArray.Clear();
-        targetArray.Add(targetingSystem.GetTarget());
-        FireBeam(victimPos);
+        firing = true;
+        numShots = 0;
         return true;
     }
 
@@ -134,7 +196,6 @@ public class Beam : WeaponAbility
             GetClosestPart(targetingSystem.GetTarget().GetComponentInParent<Entity>().NetworkGetParts().ToArray());
             targetPos = nextTargetPart.transform.position;
         }
-
 
         if (line.positionCount == 0) 
         {
@@ -162,6 +223,11 @@ public class Beam : WeaponAbility
         var residue = targetToAttack.GetComponent<IDamageable>().TakeShellDamage(GetDamage(), 0, GetComponentInParent<Entity>());
         // deal instant damage
 
+        if (nextTargetPart && nextTargetPart.craft.gameObject != targetToAttack.gameObject)
+        {
+            nextTargetPart = null;
+        }
+
         if (nextTargetPart)
         {
             nextTargetPart.TakeDamage(residue);
@@ -171,6 +237,20 @@ public class Beam : WeaponAbility
         ActivationCosmetic(victimPos);
     }
 
+    protected Transform[] GetClosestTargets(int num, Vector3 pos, bool dronesAreFree = false)
+    {
+        var list = targetingSystem.GetClosestTargets(num, pos);
+        if (list.Length > 0)
+        {
+            foreach (var ent in list)
+            {
+                if (targetArray.Contains(ent)) continue;
+                GetClosestPart(pos, ent.GetComponentsInChildren<ShellPart>());
+                break;
+            }
+        }
+        return list;
+    }
 
     public GameObject particlePrefab;
 

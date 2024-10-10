@@ -41,7 +41,7 @@ public class GroundCarrier : GroundConstruct, ICarrier
     {
         if (sectorMngr)
         {
-            return intrinsicCommandLimit + sectorMngr.GetExtraCommandUnits(faction);
+            return Mathf.Min(10, intrinsicCommandLimit + sectorMngr.GetExtraCommandUnits(faction));
         }
         else
         {
@@ -62,13 +62,15 @@ public class GroundCarrier : GroundConstruct, ICarrier
             base.Update();
             TargetManager.Enqueue(targeter);
 
-            if (!SectorManager.instance.carriers.ContainsKey(faction)
-                || (SectorManager.instance.carriers[faction] == null || SectorManager.instance.carriers[faction].Equals(null))
-                || SectorManager.instance.carriers[faction].GetIsDead())
+            var facID = FactionManager.GetDistinguishingInteger(faction);
+
+            if (!SectorManager.instance.carriers.ContainsKey(facID)
+                || (SectorManager.instance.carriers[facID] == null || SectorManager.instance.carriers[facID].Equals(null))
+                || SectorManager.instance.carriers[facID].GetIsDead())
             {
                 if (!GetIsDead())
                 {
-                    SectorManager.instance.carriers[faction] = this;
+                    SectorManager.instance.carriers[facID] = this;
                 }
             }
         }

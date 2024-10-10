@@ -161,7 +161,7 @@ public abstract class WeaponAbility : ActiveAbility
     protected float GetDamage()
     {
 
-        var final = damage * (1+Core.GetDamageFactor());
+        var final = (damage * (1+Core.GetDamageFactor())) + Core.flatDamageIncrease;
         var finalBonusDamageType = bonusDamageType;
 
         // counter drones deal double damage vs drones at all times
@@ -170,7 +170,7 @@ public abstract class WeaponAbility : ActiveAbility
         {
             if (finalBonusDamageType.IsAssignableFrom(GetTarget().GetComponent<Entity>().GetType()))
             {
-                final = (damage * (1+Core.GetDamageFactor())) * bonusDamageMultiplier;
+                final *= bonusDamageMultiplier;
             }
         }
 
@@ -228,7 +228,7 @@ public abstract class WeaponAbility : ActiveAbility
         }
 
         UpdateState(); // Update state
-
+        GasBoostCheck();
         Shoot();
     }
 
@@ -236,12 +236,16 @@ public abstract class WeaponAbility : ActiveAbility
     {
         if (State != AbilityState.Ready || Core.GetHealth()[2] < energyCost || Core.GetIsDead()) return;
         Transform target = targetingSystem.GetTarget();
+//        if (Core as Outpost && Core.faction.overrideFaction == 2) Debug.LogWarning("TEST1");
         if (target == null || !target || target.GetComponent<IDamageable>().GetIsDead() || !DistanceCheck(target))
         {
+//            if (Core as Outpost && Core.faction.overrideFaction == 2) Debug.LogWarning("TEST2");
             TargetManager.Enqueue(targetingSystem, category);
         }
         else if (target && target.GetComponent<IDamageable>() != null)
         {
+//                    if (Core as Outpost && Core.faction.overrideFaction == 2) Debug.LogWarning("TEST3");
+
             // check if there is a target
             Core.SetIntoCombat(); // now in combat
             IDamageable tmp = target.GetComponent<IDamageable>();
@@ -285,67 +289,4 @@ public abstract class WeaponAbility : ActiveAbility
         base.Execute();
         return true;
     }
-
-    protected virtual Transform[] GetClosestTargets(int num, Vector3 pos, bool dronesAreFree = false)
-    {
-        // Just get the N closest entities, the complexity is just O(N) instead of sorting which would be O(NlogN)
-
-        Entity[] potentialTargets = TargetManager.GetTargetArray(targetingSystem, category, out var count);
-        List<Transform> targets = new();
-        List<Transform> drones = new();
-        List<float> closestD = new();
-
-        for (int i = 0; i < count; i++) // go through all entities and check them for several factors
-        {
-            Entity target = potentialTargets[i];
-            Transform tr = target.transform;
-            // check if the target's category matches
-            if (category == Entity.EntityCategory.All || target.Category == category)
-            {
-                // check if it is the closest entity that passed the checks so far
-                float sqrD = Vector3.SqrMagnitude(pos - tr.position);
-
-                if (target == Core)
-                    continue;
-                if (sqrD >= GetRange() * GetRange())
-                    continue;
-
-                if (dronesAreFree && target is Drone)
-                {
-                    drones.Add(tr);
-                    continue;
-                }
-
-                if (targets.Count == 0)
-                {
-                    targets.Add(tr);
-                    closestD.Add(sqrD);
-                    continue;
-                }
-
-                for (int j = 0; j < targets.Count; j++)
-                {
-                    if (sqrD < closestD[j])
-                    {
-                        targets.Insert(j, tr);
-                        closestD.Insert(j, sqrD);
-
-                        if (targets.Count > num)
-                        {
-                            targets.RemoveAt(targets.Count - 1);
-                            closestD.RemoveAt(targets.Count - 1);
-                        }
-                    }
-                }
-            }
-        }
-        targets.AddRange(drones);
-        return targets.ToArray();
-    }
-
-    protected Transform[] GetClosestTargets(int num, bool dronesAreFree = false)
-    {
-        return GetClosestTargets(num, targetingSystem.GetEntity().transform.position, dronesAreFree);
-    }
-
 }

@@ -34,9 +34,10 @@ public class PartIndexScript : MonoBehaviour
         Obtained
     }
 
-    public static int GetNumberOfPartsObtained()
+    public static int GetNumberOfPartsObtained(bool percentEnabled)
     {
         int count = 0;
+        int total = 0;
         foreach (var part in index)
         {
             var part2 = CullToPartIndexValues(part.part);
@@ -44,24 +45,33 @@ public class PartIndexScript : MonoBehaviour
             {
                 count++;
             }
+            total++;
         }
 
-        return count;
+        if (percentEnabled)
+            return (int)((count / (double)total) * 100);
+        else
+            return count;
     }
 
-    public static int GetNumberOfPartsSeen()
+    public static int GetNumberOfPartsSeen(bool percentEnabled)
     {
         int count = 0;
+        int total = 0;
         foreach (var part in index)
         {
             var part2 = CullToPartIndexValues(part.part);
-            if (CheckPartObtained(part2))
+            if (CheckPartSeen(part2))
             {
                 count++;
             }
+            total++;
         }
 
-        return count;
+        if (percentEnabled)
+            return (int)((count / (double)total) * 100);
+        else
+            return count;
     }
 
     public void SetPartAsSeen(EntityBlueprint.PartInfo part)
@@ -161,12 +171,24 @@ public class PartIndexScript : MonoBehaviour
         instance = this;
         ResetContent();
         UpdateContent(null, null);
+
+        var partsSeen = new List<EntityBlueprint.PartInfo>();
+        foreach (var part in PlayerCore.Instance.cursave.partsSeen)
+        {
+            if (!partsSeen.Contains(CullToPartIndexValues(part)))
+            {
+                partsSeen.Add(CullToPartIndexValues(part));
+            }
+        }
+        PlayerCore.Instance.cursave.partsSeen = partsSeen;
+
         Entity.OnEntityDeath += UpdateContent;
     }
 
     private void OnDisable()
     {
         Entity.OnEntityDeath -= UpdateContent;
+        ResetContent();
     }
 
     private void ResetContent()
@@ -224,16 +246,16 @@ public class PartIndexScript : MonoBehaviour
             attemptAddPartCoroutine = null;
         }
         GetComponentInParent<Canvas>().sortingOrder = ++PlayerViewScript.currentLayer; // move window to top
-        StartCoroutine(AttemptAddPartHelper());
+        attemptAddPartCoroutine = AttemptAddPartHelper();
+        StartCoroutine(attemptAddPartCoroutine);
     }
 
-    private Coroutine attemptAddPartCoroutine;
+    private IEnumerator attemptAddPartCoroutine;
 
     private IEnumerator AttemptAddPartHelper()
     {
         int x = 0;
         // index assembly
-
         foreach (var partData in index)
         {
             AttemptAddPart(partData.part, partData.origins);
@@ -288,13 +310,13 @@ public class PartIndexScript : MonoBehaviour
         var partsObtained = PlayerCore.Instance.cursave.partsObtained;
         if (!partsObtained.Exists(x => CullToPartIndexValues(x).Equals(CullToPartIndexValues(part))))
         {
-            partsObtained.Add(part);
-            if (instance) instance.SetPartAsObtained(part);
+            partsObtained.Add(CullToPartIndexValues(part));
+            if (instance) instance.SetPartAsObtained(CullToPartIndexValues(part));
         }
         else if (part.shiny)
         {
             partsObtained[partsObtained.FindIndex(x => CullToPartIndexValues(x).Equals(CullToPartIndexValues(part)))] = part;
-            if (instance) instance.SetPartAsObtained(part);
+            if (instance) instance.SetPartAsObtained(CullToPartIndexValues(part));
         }
     }
 
@@ -303,8 +325,8 @@ public class PartIndexScript : MonoBehaviour
         var partsSeen = PlayerCore.Instance.cursave.partsSeen;
         if (!partsSeen.Exists(x => CullToPartIndexValues(x).Equals(CullToPartIndexValues(part))))
         {
-            partsSeen.Add(part);
-            if (instance) instance.SetPartAsSeen(part);
+            partsSeen.Add(CullToPartIndexValues(part));
+            if (instance) instance.SetPartAsSeen(CullToPartIndexValues(part));
         }
     }
 

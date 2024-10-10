@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using UnityEngine;
+using static TaskManager;
 
 public class MinimapArrowScript : MonoBehaviour
 {
@@ -27,32 +28,48 @@ public class MinimapArrowScript : MonoBehaviour
     // Draw arrows signifying objective locations. Do not constantly call this method.
     public static void DrawObjectiveLocations()
     {
-        if (instance)
+        if (!instance) return;
+
+        // clear the dictionary, then recreate the arrows
+        foreach (var rectTransform in instance.arrows.Values)
         {
-            // clear the dictionary, then recreate the arrows
-            foreach (var rectTransform in instance.arrows.Values)
+            if (rectTransform && rectTransform.gameObject)
             {
-                if (rectTransform && rectTransform.gameObject)
-                {
-                    Destroy(rectTransform.gameObject);
-                }
-            }
-
-            instance.arrows.Clear();
-
-            foreach (var ls in TaskManager.objectiveLocations.Values)
-            {
-                foreach (var loc in ls)
-                {
-                    if (loc.dimension != PlayerCore.Instance.Dimension) continue;
-                    var arrow = Instantiate(instance.arrowPrefab, instance.transform, false);
-                    arrow.GetComponent<SpriteRenderer>().color = Color.red + Color.green / 2; // orange
-                    arrow.GetComponent<SpriteRenderer>().enabled = true;
-                    instance.arrows.Add(loc, arrow.transform);
-                    instance.UpdatePosition(arrow.transform, loc.location);
-                }
+                Destroy(rectTransform.gameObject);
             }
         }
+
+        instance.arrows.Clear();
+
+        foreach (var ls in TaskManager.objectiveLocations.Values)
+        {
+            foreach (var loc in ls)
+            {
+                AddArrow(loc);
+            }
+        }
+
+        if (Radar.location != null)
+        {
+            AddArrow(Radar.location);
+        }
+
+
+        if (!CoreScriptsManager.instance) return;
+        foreach (var loc in CoreScriptsManager.instance.objectiveLocations.Values)
+        {
+            AddArrow(loc);
+        }
+    }
+
+    private static void AddArrow(ObjectiveLocation loc)
+    {
+        if (loc.dimension != PlayerCore.Instance.Dimension) return;
+        var arrow = Instantiate(instance.arrowPrefab, instance.transform, false);
+        arrow.GetComponent<SpriteRenderer>().color = loc.color;
+        arrow.GetComponent<SpriteRenderer>().enabled = true;
+        instance.arrows.Add(loc, arrow.transform);
+        instance.UpdatePosition(arrow.transform, loc.location);
     }
 
     bool UpdatePosition(Transform arrow, Vector2 realPos, bool hideIfOffViewport = false)
@@ -153,8 +170,8 @@ public class MinimapArrowScript : MonoBehaviour
                 continue;
             }
 
-            UpdatePosition(coreArrows[core], core.transform.position, core.faction != PlayerCore.Instance.faction);
-            if (core.faction != player.faction && coreArrows[core].GetComponent<SpriteRenderer>().enabled)
+            UpdatePosition(coreArrows[core], core.transform.position, core.faction.factionID != PlayerCore.Instance.faction.factionID);
+            if (core.faction.factionID != player.faction.factionID && coreArrows[core].GetComponent<SpriteRenderer>().enabled)
             {
                 coreArrows[core].GetComponent<SpriteRenderer>().enabled = !core.IsInvisible;
             }
@@ -179,7 +196,7 @@ public class MinimapArrowScript : MonoBehaviour
         }
 
         coreArrows.Add(core, Instantiate(arrowPrefab, transform, false).transform);
-        coreArrows[core].GetComponent<SpriteRenderer>().color = FactionManager.GetFactionColor(core.faction);
-        UpdatePosition(coreArrows[core], core.transform.position, core.faction != PlayerCore.Instance.faction);
+        coreArrows[core].GetComponent<SpriteRenderer>().color = FactionManager.GetFactionColor(core.faction.factionID);
+        UpdatePosition(coreArrows[core], core.transform.position, core.faction.factionID != PlayerCore.Instance.faction.factionID);
     }
 }

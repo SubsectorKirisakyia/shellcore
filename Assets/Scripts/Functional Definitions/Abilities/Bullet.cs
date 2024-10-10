@@ -11,6 +11,7 @@ public class Bullet : WeaponAbility
     protected float pierceFactor = 0; // pierce factor; increase this to pierce more of the shell
     protected string bulletSound = "clip_bullet2";
     public static readonly int bulletDamage = 400;
+    protected int entityPierce = 1;
 
     protected override void Awake()
     {
@@ -28,6 +29,7 @@ public class Bullet : WeaponAbility
         prefabScale = 1 * Vector3.one;
         category = Entity.EntityCategory.All;
         bonusDamageType = typeof(AirConstruct);
+        entityPierce = 3;
     }
 
     protected override void Start()
@@ -98,15 +100,16 @@ public class Bullet : WeaponAbility
         script.SetCategory(type == WeaponDiversityType.Torpedo ? Entity.EntityCategory.All : category);
         script.SetTerrain(type == WeaponDiversityType.Torpedo ? Entity.TerrainType.Ground : terrain);
         script.SetShooterFaction(Core.faction);
+#if UNITY_EDITOR
+        if (script.owner is PlayerCore && DevConsoleScript.godModeEnabled) pierceFactor = 1;
+#endif
         script.SetPierceFactor(pierceFactor);
-        script.particleColor = part && part.info.shiny ? FactionManager.GetFactionShinyColor(Core.faction) : new Color(0.8F, 1F, 1F, 0.9F);
+        script.particleColor = part && part.info.shiny ? FactionManager.GetFactionShinyColor(Core.faction.factionID) : new Color(0.8F, 1F, 1F, 0.9F);
         script.missParticles = true;
+        script.allowedHits = gasBoosted ? entityPierce : 1;
 
         // Add velocity to the bullet
-        if (t != 0)
-        {
-            bullet.GetComponent<Rigidbody2D>().velocity = Vector3.Normalize(relativeDistance + targetVelocity * t) * bulletSpeed;
-        }
+        bullet.GetComponent<Rigidbody2D>().velocity = Vector3.Normalize(relativeDistance + targetVelocity * t) * bulletSpeed;
 
         // Destroy the bullet after survival time
         if (MasterNetworkAdapter.mode == MasterNetworkAdapter.NetworkMode.Off || !MasterNetworkAdapter.lettingServerDecide)

@@ -261,7 +261,7 @@ public class PlayerCore : ShellCore
                 if (targets[i] &&
                     !targets[i].GetIsDead() &&
                     targets[i] is ICarrier carrier &&
-                    targets[i].faction == faction)
+                    targets[i].faction.factionID == faction.factionID)
                 {
                     return carrier;
                 }
@@ -314,7 +314,8 @@ public class PlayerCore : ShellCore
 
         // force sectors to load once positioning has been determined
         if (MasterNetworkAdapter.mode == MasterNetworkAdapter.NetworkMode.Off)
-        SectorManager.instance.AttemptSectorLoad();
+            SectorManager.instance.AttemptSectorLoad();
+        CoreScriptsManager.instance.Initialize();
 
         // the player needs a predictable name for task interactions, so its object will always be called this
         name = entityName = "player";
@@ -413,6 +414,13 @@ public class PlayerCore : ShellCore
 
     public override void Warp(Vector3 point, bool setWarpUninteractable = true)
     {
+#if UNITY_EDITOR
+        if (GetTractorTarget() && GetTractorTarget().GetComponent<Entity>())
+        {
+            GetTractorTarget().GetComponent<Entity>().transform.position = point;
+        }
+#endif
+
         base.Warp(point, setWarpUninteractable);
         CameraScript.instance.Focus(transform.position);
         foreach (var instance in RectangleEffectScript.instances)
@@ -425,13 +433,14 @@ public class PlayerCore : ShellCore
         AudioManager.PlayClipByID("clip_respawn", transform.position);
         if (MasterNetworkAdapter.mode == MasterNetworkAdapter.NetworkMode.Off)
             SectorManager.instance.AttemptSectorLoad();
+
     }
 
     protected override void CraftMover(Vector2 directionVector)
     {
         base.CraftMover(directionVector);
 
-        if (directionVector != Vector2.zero && (!MasterNetworkAdapter.lettingServerDecide))
+        if (directionVector != Vector2.zero && (!MasterNetworkAdapter.lettingServerDecide) && !CameraScript.coreScriptsPanning)
         {
             CameraScript.instance.Focus(transform.position);
         }
@@ -442,7 +451,7 @@ public class PlayerCore : ShellCore
         var residue = base.TakeShellDamage(amount, shellPiercingFactor, lastDamagedBy);
         if (lastDamagedBy)
         {
-            HealthBarScript.instance.StartHurtHud(FactionManager.GetFactionColor(lastDamagedBy.faction));
+            HealthBarScript.instance.StartHurtHud(FactionManager.GetFactionColor(lastDamagedBy.faction.factionID));
         }
 
         return residue;
@@ -450,7 +459,7 @@ public class PlayerCore : ShellCore
 
     public static Color GetPlayerFactionColor()
     {
-        return PlayerCore.Instance ? FactionManager.GetFactionColor(PlayerCore.Instance.GetFaction()) : FactionManager.GetFactionColor(0);
+        return PlayerCore.Instance ? FactionManager.GetFactionColor(PlayerCore.Instance.GetFaction().factionID) : FactionManager.GetFactionColor(0);
     }
 
     public int GetBuildValue()

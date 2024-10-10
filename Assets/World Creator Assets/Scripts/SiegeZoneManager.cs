@@ -31,7 +31,6 @@ public class SiegeZoneManager : MonoBehaviour
     private List<Entity> entitiesRemainingToRemove;
     private List<Entity> entitiesRemaining;
     private int waveCount = 0;
-    public List<PlayerCore> players;
     public bool playing = false;
     public string sectorName;
 
@@ -40,7 +39,6 @@ public class SiegeZoneManager : MonoBehaviour
         timer = 0;
         waveCount = 0;
         waves = new Queue<SiegeWave>();
-        players = new List<PlayerCore>();
         entitiesToRemove = new List<SiegeEntity>();
         entitiesRemaining = new List<Entity>();
         entitiesRemainingToRemove = new List<Entity>();
@@ -49,11 +47,16 @@ public class SiegeZoneManager : MonoBehaviour
         playing = true;
     }
 
+    void OnDisable()
+    {
+        playing = false;
+    }
+
     public void AlertPlayers(string message)
     {
-        foreach (PlayerCore player in players)
+        if (PlayerCore.Instance)
         {
-            player.alerter.showMessage(message, null);
+            PlayerCore.Instance.alerter.showMessage(message, null);
         }
     }
 
@@ -63,9 +66,9 @@ public class SiegeZoneManager : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.K))
         {
             playing = false;
-            if (NodeEditorFramework.Standard.WinSiegeCondition.OnSiegeWin != null)
+            if (CoreScriptsManager.OnSiegeWin != null)
             {
-                NodeEditorFramework.Standard.WinSiegeCondition.OnSiegeWin.Invoke(sectorName);
+                CoreScriptsManager.OnSiegeWin.Invoke(sectorName);
             }
 
             Debug.Log("Victory!");
@@ -92,9 +95,9 @@ public class SiegeZoneManager : MonoBehaviour
                 else if ((current.entities.Count == 0 && entitiesRemaining.Count == 0))
                 {
                     playing = false;
-                    if (NodeEditorFramework.Standard.WinSiegeCondition.OnSiegeWin != null)
+                    if (CoreScriptsManager.OnSiegeWin != null)
                     {
-                        NodeEditorFramework.Standard.WinSiegeCondition.OnSiegeWin.Invoke(sectorName);
+                        CoreScriptsManager.OnSiegeWin.Invoke(sectorName);
                     }
 
                     Debug.Log("Victory!");
@@ -121,14 +124,14 @@ public class SiegeZoneManager : MonoBehaviour
                         Path path = ScriptableObject.CreateInstance<Path>();
                         path.waypoints = new List<Path.Node>();
                         Path.Node node = new Path.Node();
-                        var currentTargets = targets.FindAll(targ => targ && !FactionManager.IsAllied(sectorEntity.faction, targ.faction));
+                        var currentTargets = targets.FindAll(targ => targ && !FactionManager.IsAllied(sectorEntity.faction.factionID, targ.faction.factionID));
                         if (currentTargets.Count > 0)
                         {
                             node.position = currentTargets[Random.Range(0, currentTargets.Count)].transform.position;
                         }
-                        else if (players.Count > 0)
+                        else if (PlayerCore.Instance)
                         {
-                            node.position = players[Random.Range(0, players.Count)].transform.position;
+                            node.position = PlayerCore.Instance.transform.position;
                         }
 
                         node.children = new List<int>();
@@ -138,7 +141,7 @@ public class SiegeZoneManager : MonoBehaviour
                     }
 
                     entitiesToRemove.Add(ent);
-                    if (!FactionManager.IsAllied(sectorEntity.faction, players[0].faction))
+                    if (!FactionManager.IsAllied(sectorEntity.faction, PlayerCore.Instance.faction))
                     {
                         entitiesRemaining.Add(sectorEntity);
                     }

@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Events;
+using static Entity;
 
 public class AirCraftAI : MonoBehaviour
 {
@@ -108,7 +109,8 @@ public class AirCraftAI : MonoBehaviour
     {
         if (craft is Drone drone && drone.type == DroneType.Worker)
         {
-            (module as TractorAI).Follow(t);
+            if (module is TractorAI tai)
+                tai.Follow(t);
         }
         else
         {
@@ -172,21 +174,26 @@ public class AirCraftAI : MonoBehaviour
 
     public void setPath(NodeEditorFramework.Standard.PathData data, UnityAction OnPathEnd = null, bool patrolling = false)
     {
-        craft.isPathing = true;
+
+        if (data == null || data.waypoints == null || data.waypoints.Count == 0)
+        {
+            craft.isPathing = false;
+            return;
+        }
+
+
         Path path = ScriptableObject.CreateInstance<Path>();
         path.waypoints = new List<Path.Node>();
 
-        if (data != null && data.waypoints != null)
+        craft.isPathing = true;
+        for (int i = 0; i < data.waypoints.Count; i++)
         {
-            for (int i = 0; i < data.waypoints.Count; i++)
+            path.waypoints.Add(new Path.Node()
             {
-                path.waypoints.Add(new Path.Node()
-                {
-                    ID = data.waypoints[i].ID,
-                    position = data.waypoints[i].position,
-                    children = data.waypoints[i].children
-                });
-            }
+                ID = data.waypoints[i].ID,
+                position = data.waypoints[i].position,
+                children = data.waypoints[i].children
+            });
         }
 
         setMode(AIMode.Path);
@@ -244,10 +251,14 @@ public class AirCraftAI : MonoBehaviour
     {
         Vector2 normalizedTarget = targetVector.normalized;
         float delta = Mathf.Abs(Vector2.Dot(craft.transform.up, normalizedTarget) - 1f);
+        float lastDelta = 0;
         while (delta > 0.0001F)
         {
             craft.RotateCraft(targetVector);
             delta = Mathf.Abs(Vector2.Dot(craft.transform.up, normalizedTarget) - 1f);
+            // give up if the rotate didn't do anything
+            if (lastDelta == delta) break;
+            lastDelta = delta;
             yield return null;
         }
 
@@ -269,13 +280,14 @@ public class AirCraftAI : MonoBehaviour
             Entity target = getNearestEntity<Entity>(craft, true);
             craft.GetTargetingSystem().SetTarget(target ? target.transform : null);
 
-            foreach (Ability a in craft.GetAbilities())
-            {
-                if (a)
+            if (craft.canUseAbilities)
+                foreach (Ability a in craft.GetAbilities())
                 {
-                    a.Tick();
+                    if (a)
+                    {
+                        a.Tick();
+                    }
                 }
-            }
 
             // shouldn't tick if dead or in cutscene, give control to the cutscene
             if (aggression != AIAggression.KeepMoving && aggroSearchTimer < Time.time && !DialogueSystem.isInCutscene)
@@ -378,8 +390,8 @@ public class AirCraftAI : MonoBehaviour
                     {
                         // check if retreat necessary
                         if (craft.GetHealth()[0] < retreatTreshold * craft.GetMaxHealth()[0] 
-                            && SectorManager.instance.current.type != Sector.SectorType.BattleZone
-                            && SectorManager.instance.current.type != Sector.SectorType.SiegeZone)
+                            && SectorManager.instance.GetCurrentType() != Sector.SectorType.BattleZone
+                            && SectorManager.instance.GetCurrentType() != Sector.SectorType.SiegeZone)
                         {
                             state = AIState.Retreating;
                             //Debug.Log(craft.name + "[ " + craft.faction + " ] retreating!");
@@ -478,7 +490,7 @@ public class AirCraftAI : MonoBehaviour
 
     public static T getNearestEntity<T>(Entity craft, bool enemy = true) where T : Entity
     {
-        int faction = craft.faction;
+        EntityFaction faction = craft.faction;
         Entity.TerrainType terrainType = craft.Terrain;
         if (craft is Drone drone)
         {
@@ -515,7 +527,7 @@ public class AirCraftAI : MonoBehaviour
 
             if (AIData.entities[i] is T)
             {
-                if ((FactionManager.IsAllied(AIData.entities[i].faction, faction) ^ !enemy) && faction != -1)
+                if ((FactionManager.IsAllied(AIData.entities[i].faction, faction) ^ !enemy) && faction.factionID != -1)
                 {
                     continue;
                 }

@@ -246,7 +246,7 @@ namespace NodeEditorFramework.Standard
             node.ID = 0;
             node.text = taskConfirmedDialogue != null ? taskConfirmedDialogue : "Complete the task."; // TODO: Why is this (and the color(?)) sometimes null? Is the task node not loaded correctly?
             TaskManager.speakerID = entityIDforConfirmedResponse;
-            node.textColor = useEntityColor && TaskManager.GetSpeaker() ? FactionManager.GetFactionColor(TaskManager.GetSpeaker().faction) : dialogueColor;
+            node.textColor = useEntityColor && TaskManager.GetSpeaker() ? FactionManager.GetFactionColor(TaskManager.GetSpeaker().faction.factionID) : dialogueColor;
             node.nextNodes = new List<int>() { 1 };
 
             var node1 = new Dialogue.Node();
@@ -293,7 +293,35 @@ namespace NodeEditorFramework.Standard
             }
         }
 
-        public void RegisterTask()
+        public static void RegisterTask(Task task, string missionName)
+        {
+            // TODO: Prevent this from breaking the game by not allowing this node in dialogue canvases
+            var mission = PlayerCore.Instance.cursave.missions.Find((x) => x.name == missionName);
+            if (mission != null)
+            {
+                mission.status = Mission.MissionStatus.Ongoing;
+                if (MissionCondition.OnMissionStatusChange != null)
+                {
+                    MissionCondition.OnMissionStatusChange.Invoke(mission);
+                }
+
+                if (!mission.tasks.Exists((x) => x.dialogue == task.dialogue))
+                {
+                    Debug.Log("adding task: " + task.taskID);
+                    mission.tasks.Add(task.GetCopy());
+                }
+            }
+            else Debug.Log($"Could not find mission: {missionName}");
+        }
+
+        public void CreateAndRegisterTask()
+        {
+            var task = CreateTask();
+            RegisterTask(task, (Canvas as QuestCanvas).missionName);
+        }
+
+
+        private Task CreateTask()
         {
             Task task = new Task()
             {
@@ -314,28 +342,13 @@ namespace NodeEditorFramework.Standard
                     tier = partTier
                 };
             }
-
-            // TODO: Prevent this from breaking the game by not allowing this node in dialogue canvases
-            var mission = PlayerCore.Instance.cursave.missions.Find((x) => x.name == (Canvas as QuestCanvas).missionName);
-            if (mission != null)
-            {
-                mission.status = Mission.MissionStatus.Ongoing;
-                if (MissionCondition.OnMissionStatusChange != null)
-                {
-                    MissionCondition.OnMissionStatusChange.Invoke(mission);
-                }
-
-                if (!mission.tasks.Exists((x) => x.dialogue == task.dialogue))
-                {
-                    mission.tasks.Add(task);
-                }
-            }
+            return task;
         }
 
         public void StartTask()
         {
-            RegisterTask();
-
+            var task = CreateTask();
+            RegisterTask(task, (Canvas as QuestCanvas).missionName);
             SetTaskCheckpoint();
         }
     }

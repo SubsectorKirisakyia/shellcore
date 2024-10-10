@@ -40,7 +40,7 @@ public class QuantityDisplayScript : MonoBehaviour
             var texts = GetComponentsInChildren<UnityEngine.UI.Text>();
             texts[1].text = player.GetPower().ToString();
             texts[3].text = player.unitsCommanding.Count + "/" + player.GetTotalCommandLimit();
-            texts[5].text = GetCreditString(player.GetCredits()).ToString();
+            texts[5].text = GetValueString(player.GetCredits()).ToString();
             var rect = texts[5].rectTransform.rect;
             rect.center = texts[5].rectTransform.position;
             tooltipManager.AddBounds(rect, $"CREDITS: {player.GetCredits()}");
@@ -88,7 +88,7 @@ public class QuantityDisplayScript : MonoBehaviour
         }
     }
 
-    public static string GetCreditString(int credits)
+    public static string GetValueString(int credits)
     {
         if (credits < 100000)
         {
@@ -148,7 +148,7 @@ public class QuantityDisplayScript : MonoBehaviour
             description = entity.Terrain + " " + entity.Category;
             targetName.text = entity.entityName + (ReticleScript.instance.DebugMode ? $" ({entity.ID})" : "");
             targetDesc.text = description;
-            targetName.color = targetDesc.color = FactionManager.GetFactionColor(entity.faction);
+            targetName.color = targetDesc.color = FactionManager.GetFactionColor(entity.faction.factionID);
         }
         else if (obj.GetComponent<ShellPart>())
         {
@@ -157,7 +157,9 @@ public class QuantityDisplayScript : MonoBehaviour
             if (PartIndexScript.CheckPartObtained(info))
             {
                 targetName.text = info.partID;
-                targetDesc.text = AbilityUtilities.GetAbilityNameByID(info.abilityID, null) + " " + info.tier;
+                targetDesc.text = AbilityUtilities.GetAbilityNameByID(info.abilityID, info.secondaryData);
+                if (info.tier != 0)
+                    targetDesc.text += " " + info.tier;
                 targetName.color = targetDesc.color = FactionManager.GetFactionColor(obj.GetComponent<ShellPart>().GetFaction());
             }
             else
@@ -166,6 +168,21 @@ public class QuantityDisplayScript : MonoBehaviour
                 targetDesc.text = "Bring to Yard";
                 targetName.color = targetDesc.color = FactionManager.GetFactionColor(obj.GetComponent<ShellPart>().GetFaction());
             }
+        }
+        else if (obj.GetComponent<ShardRock>() || obj.GetComponent<Shard>())
+        {
+            if (obj.GetComponent<Shard>())
+            {
+                targetName.text = "Shard";
+                targetDesc.text = "Loot";
+            }
+            else
+            {
+                targetName.text = "Shard Rock";
+                targetDesc.text = "";
+            }
+            targetDesc.color = targetName.color = new Color32(51, 153, 204, 255);
+            targetInfo.SetActive(true);
         }
         else
         {

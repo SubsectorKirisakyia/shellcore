@@ -6,6 +6,7 @@ using NodeEditorFramework.Standard;
 using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.UI;
+using static CoreScriptsManager;
 
 ///
 /// This class manages dialogue windows as well as dialogue traversers/canvases.
@@ -28,6 +29,7 @@ public class DialogueSystem : MonoBehaviour, IDialogueOverrideHandler
     public GameObject rewardBoxPrefab;
     public GameObject battleResultsBoxPrefab;
     public Font shellcorefont;
+    [SerializeField]
     GUIWindowScripts window;
     RectTransform background;
     Text textRenderer;
@@ -36,13 +38,53 @@ public class DialogueSystem : MonoBehaviour, IDialogueOverrideHandler
     public VendorUI vendorUI;
     int characterCount = 0;
     float nextCharacterTime;
-    public double timeBetweenCharacters = 0.0175d;
+    private float typingSpeedFactor = 1;
+    public double timeBetweenCharacters = 0.01f;
     string text = "";
     public PlayerCore player;
     Vector3? speakerPos = null;
+    public FusionStationScript fusionScript;
     public CoreUpgraderScript upgraderScript;
     public static bool isInCutscene = false;
     BattleZoneManager battleZoneManager;
+
+    public Image faderImage;
+    public void FadeInScreenBlack(Color color, float speedFactor)
+    {
+        StartCoroutine(FadeInScreenBlackCo(color, speedFactor));
+    }
+    private IEnumerator FadeInScreenBlackCo(Color color, float speedFactor)
+    {
+        color.a = 0;
+        faderImage.color = color;
+        while (faderImage.color.a < 1)
+        {
+            var c = faderImage.color;
+            c.a += 0.1F;
+            faderImage.color = c;
+            yield return new WaitForSeconds(0.05F / speedFactor);
+        }
+    }
+
+    public void FadeOutScreenBlack(Color color, float speedFactor)
+    {
+        StartCoroutine(FadeOutScreenBlackCo(color, speedFactor));
+    }
+    private IEnumerator FadeOutScreenBlackCo(Color color, float speedFactor)
+    {
+        color.a = 1;
+        faderImage.color = color;
+        while (faderImage.color.a > 0)
+        {
+            var c = faderImage.color;
+            c.a -= 0.1F;
+            faderImage.color = c;
+            yield return new WaitForSeconds(0.05F / speedFactor);
+        }
+    }
+
+
+
 
     public enum DialogueStyle
     {
@@ -71,7 +113,7 @@ public class DialogueSystem : MonoBehaviour, IDialogueOverrideHandler
     public static string speakerID;
     private static bool initialized = false;
 
-    public void PushInteractionOverrides(string entityID, InteractAction action, Traverser traverser) 
+    public void PushInteractionOverrides(string entityID, InteractAction action, Traverser traverser, Context context = null) 
     {
         if (GetInteractionOverrides().ContainsKey(entityID))
         {
@@ -157,7 +199,7 @@ public class DialogueSystem : MonoBehaviour, IDialogueOverrideHandler
                 traverser.StartQuest();
             }
         }
-        else Debug.LogWarning("null canvas path");
+        else Debug.Log("null canvas path");
     }
 
     public static bool GetInitialized()
@@ -214,7 +256,7 @@ public class DialogueSystem : MonoBehaviour, IDialogueOverrideHandler
             if (Time.time > nextCharacterTime)
             {
                 characterCount++;
-                nextCharacterTime = (float)(Time.time + timeBetweenCharacters);
+                nextCharacterTime = (float)(Time.time + timeBetweenCharacters / typingSpeedFactor);
                 textRenderer.text = text.Substring(0, characterCount);
             }
         }
@@ -226,9 +268,9 @@ public class DialogueSystem : MonoBehaviour, IDialogueOverrideHandler
         return speaker && !speaker.GetIsDead();
     }
 
-    public static void StartDialogue(Dialogue dialogue, IInteractable speaker = null)
+    public static void StartDialogue(Dialogue dialogue, IInteractable speaker = null, Context context = null)
     {
-        Instance.startDialogue(dialogue, speaker);
+        Instance.startDialogue(dialogue, speaker, context);
     }
 
     public static void ShowPopup(string text, Color color, Entity speaker = null)
@@ -263,7 +305,6 @@ public class DialogueSystem : MonoBehaviour, IDialogueOverrideHandler
 
         window = Instantiate(prefab).GetComponentInChildren<GUIWindowScripts>();
 
-
         window.Activate();
         window.transform.SetSiblingIndex(0);
         background = window.transform.Find("Background").GetComponent<RectTransform>();
@@ -279,20 +320,20 @@ public class DialogueSystem : MonoBehaviour, IDialogueOverrideHandler
         textRenderer.font = shellcorefont;
 
         // radio image 
-        var display = window.transform.Find("Background/Radio/Holder")?.GetComponentInChildren<SelectionDisplayHandler>();
+        var display = window.transform.Find("Background/RadioVisual/Radio/Holder")?.GetComponentInChildren<SelectionDisplayHandler>();
         if (display)
         {
-            var remastered = dialogueStyle == DialogueStyle.Remastered;
+            var remastered = GetDialogueStyle() == DialogueStyle.Remastered;
             if (speaker && remastered)
             {
                 DialogueViewTransitionIn(speaker);
-                display.AssignDisplay(speaker.blueprint, null, speaker.faction);
-                window.transform.Find("Background/Name").GetComponent<Text>().text = speaker.blueprint.entityName;
+                AssignRadioDisplay(speaker);
+                window.transform.Find("Background/RadioVisual/Name").GetComponent<Text>().text = speaker.blueprint.entityName;
             }
             else
             {
                 display.gameObject.SetActive(false);
-                window.transform.Find("Background/Name").GetComponent<Text>().text = remastered ? "Unknown Speaker" : "";
+                window.transform.Find("Background/RadioVisual/Name").GetComponent<Text>().text = remastered ? "Unknown Speaker" : "";
             }
         }
 
@@ -313,6 +354,11 @@ public class DialogueSystem : MonoBehaviour, IDialogueOverrideHandler
         }
     }
 
+    private DialogueStyle GetDialogueStyle()
+    {
+        if (isInCutscene) return DialogueStyle.Remastered;
+        return dialogueStyle;
+    }
     ///
     /// Creates and returns a button with the passed text, action call, and y position.
     ///
@@ -321,7 +367,7 @@ public class DialogueSystem : MonoBehaviour, IDialogueOverrideHandler
         RectTransform button = Instantiate(dialogueButtonPrefab).GetComponent<RectTransform>();
         button.SetParent(background, false);
         button.anchoredPosition = new Vector2(0, ypos);
-        button.GetComponent<Image>().enabled = dialogueStyle == DialogueStyle.Remastered;
+        button.GetComponent<Image>().enabled = GetDialogueStyle() == DialogueStyle.Remastered ;
         if (call != null)
         {
             button.GetComponent<Button>().onClick.AddListener(call);
@@ -421,6 +467,12 @@ public class DialogueSystem : MonoBehaviour, IDialogueOverrideHandler
 
     private void showBattleResults(bool victory)
     {
+        if (closeNext)
+        {
+            closeNext = false;
+            return;
+        }
+        
         if (window)
         {
             endDialogue(0);
@@ -528,14 +580,12 @@ public class DialogueSystem : MonoBehaviour, IDialogueOverrideHandler
             window.transform.Find("Holder").Find("Mission Name").GetComponent<Text>().text = mission.name.ToUpper().Substring(0, 30) + "...";
         }
 
-        window.transform.Find("Rank").GetComponent<Text>().text = mission.rank.ToUpper();
-        window.transform.Find("Rank").GetComponent<Text>().color = TaskDisplayScript.rankColorsByString[mission.rank];
         window.transform.Find("Holder").Find("Rewards").GetComponent<Text>().text = rewardsText;
     }
 
     public static void ShowDialogueNode(NodeEditorFramework.Standard.DialogueNode node, Entity speaker = null)
     {
-        Instance.showDialogue(node.text, node.answers, speaker, node.textColor, node.useEntityColor);
+        Instance.showCanvasDialogue(node.text, node.answers, speaker, node.textColor, node.useEntityColor);
     }
 
     public static void ShowFinishTaskNode(NodeEditorFramework.Standard.FinishTaskNode node, Entity speaker = null)
@@ -546,12 +596,13 @@ public class DialogueSystem : MonoBehaviour, IDialogueOverrideHandler
             node.answers.Add("Ok");
         }
 
-        Instance.showDialogue(node.rewardText, node.answers, speaker, node.textColor, node.useEntityColor);
+        Instance.showCanvasDialogue(node.rewardText, node.answers, speaker, node.textColor, node.useEntityColor);
     }
 
-    private void showDialogue(string text, List<string> answers, Entity speaker, Color textColor, bool useEntityColor = true)
+    private void showCanvasDialogue(string text, List<string> answers, Entity speaker, Color textColor, bool useEntityColor = true)
     {
-        CreateWindow(dialogueBoxPrefab, text, useEntityColor && speaker ? FactionManager.GetFactionColor(speaker.faction) : textColor, speaker);
+        typingSpeedFactor = 1;
+        CreateWindow(dialogueBoxPrefab, text, useEntityColor && speaker ? FactionManager.GetFactionColor(speaker.faction.factionID) : textColor, speaker);
         DialogueViewTransitionIn(speaker);
 
         // create buttons
@@ -575,10 +626,11 @@ public class DialogueSystem : MonoBehaviour, IDialogueOverrideHandler
 
     private void SetupRewards(GameObject gameObject, RewardWrapper wrapper)
     {
-        gameObject.transform.Find("Credit Reward Text").GetComponent<Text>().text =
+        var taskRewardInfo = gameObject.transform.Find("TaskRewardInfo");
+        taskRewardInfo.Find("Credit Reward Text").GetComponent<Text>().text =
             "Credit reward: " + wrapper.creditReward;
 
-        gameObject.transform.Find("Reputation Reward Text").GetComponent<Text>().text =
+        taskRewardInfo.Find("Reputation Reward Text").GetComponent<Text>().text =
             "Reputation reward: " + wrapper.reputationReward;
         // Part reward
         if (wrapper.partReward)
@@ -590,7 +642,7 @@ public class DialogueSystem : MonoBehaviour, IDialogueOverrideHandler
                 Debug.LogWarning("Part reward of Start Task wrapper not found!");
             }
 
-            var partImage = gameObject.transform.Find("Part").GetComponent<Image>();
+            var partImage = taskRewardInfo.Find("Part").GetComponent<Image>();
             partImage.sprite = ResourceManager.GetAsset<Sprite>(blueprint.spriteID);
             partImage.rectTransform.sizeDelta = partImage.sprite.bounds.size * 45;
             partImage.color = Color.green;
@@ -598,7 +650,7 @@ public class DialogueSystem : MonoBehaviour, IDialogueOverrideHandler
             // Ability image:
             if (wrapper.partAbilityID > 0)
             {
-                var backgroudBox = gameObject.transform.Find("backgroundbox");
+                var backgroudBox = taskRewardInfo.Find("backgroundbox");
                 var abilityIcon = backgroudBox.Find("Ability").GetComponent<Image>();
                 var tierIcon = backgroudBox.Find("Tier").GetComponent<Image>();
                 var type = backgroudBox.Find("Type").GetComponent<Text>();
@@ -622,13 +674,13 @@ public class DialogueSystem : MonoBehaviour, IDialogueOverrideHandler
             }
             else
             {
-                gameObject.transform.Find("backgroundbox").gameObject.SetActive(false);
+                taskRewardInfo.Find("backgroundbox").gameObject.SetActive(false);
             }
         }
         else
         {
-            gameObject.transform.Find("Part").GetComponent<Image>().enabled = false;
-            gameObject.transform.Find("backgroundbox").gameObject.SetActive(false);
+            taskRewardInfo.Find("Part").GetComponent<Image>().enabled = false;
+            taskRewardInfo.Find("backgroundbox").gameObject.SetActive(false);
         }
     }
 
@@ -659,13 +711,15 @@ public class DialogueSystem : MonoBehaviour, IDialogueOverrideHandler
             endDialogue(0, false);
         }
 
-        CreateWindow(taskDialogueBoxPrefab, node.dialogueText, node.useEntityColor && speaker ? FactionManager.GetFactionColor(speaker.faction) : node.dialogueColor, speaker);
+        CreateWindow(taskDialogueBoxPrefab, node.dialogueText, node.useEntityColor && speaker ? FactionManager.GetFactionColor(speaker.faction.factionID) : node.dialogueColor, speaker);
+        background.Find("TaskRewardInfo").gameObject.SetActive(true);
+        background.Find("RadioVisual").GetComponent<CanvasGroup>().alpha = 0.1F;
         DialogueViewTransitionIn(speaker);
         AudioManager.PlayClipByID("clip_select", true); // task button cannot create a noise because it launches endDialogue()
         // so cover for its noise here
 
         // Objective list
-        var objectiveList = background.transform.Find("ObjectiveList").GetComponent<Text>();
+        var objectiveList = background.transform.Find("TaskRewardInfo/ObjectiveList").GetComponent<Text>();
         objectiveList.text = node.objectiveList;
 
         var wrapper = new RewardWrapper();
@@ -709,33 +763,53 @@ public class DialogueSystem : MonoBehaviour, IDialogueOverrideHandler
         }
     }
 
-    private void startDialogue(Dialogue dialogue, IInteractable speaker)
+    public void CloseWindow()
     {
+        if (window)
+        {
+            window.CloseUI();
+        }
+        else closeNext = true;
+    }
+
+    private bool closeNext;
+
+    private void startDialogue(Dialogue dialogue, IInteractable speaker, Context context = null)
+    {
+        typingSpeedFactor = 1;
         if (window)
         {
             endDialogue();
         }
         if (speaker != null)
             speakerPos = speaker.GetTransform().position;
+        else speakerPos = null;
         //create window
         window = Instantiate(dialogueBoxPrefab).GetComponentInChildren<GUIWindowScripts>();
         window.Activate();
 
-        if (speaker as Entity)
-            DialogueViewTransitionIn(speaker as Entity);
+
+
+        DialogueViewTransitionIn(speaker as Entity);
 
         background = window.transform.Find("Background").GetComponent<RectTransform>();
-        background.transform.Find("Exit").GetComponent<Button>().onClick.AddListener(() => { endDialogue(); });
+        var exit = background.transform.Find("Exit");
+        exit.GetComponent<Button>().onClick.AddListener(() => { endDialogue(); });
+        if (isInCutscene)
+        {
+            exit.gameObject.SetActive(false);
+        }
+
         window.OnCancelled.AddListener(() => { endDialogue(); });
         textRenderer = background.transform.Find("Text").GetComponent<Text>();
         textRenderer.font = shellcorefont;
 
-        next(dialogue, 0, speaker);
+        next(dialogue, 0, speaker, context);
     }
 
-    public static void Next(Dialogue dialogue, int ID, IInteractable speaker)
+    public static void Next(Dialogue dialogue, int ID, IInteractable speaker, Context context = null)
     {
-        Instance.next(dialogue, ID, speaker);
+        Instance.next(dialogue, ID, speaker, context);
     }
 
     public void OpenBuilder(Vector3 speakerPos)
@@ -756,13 +830,31 @@ public class DialogueSystem : MonoBehaviour, IDialogueOverrideHandler
         upgraderScript.initialize();
     }
 
+    public void OpenFusion(Vector3 speakerPos)
+    {
+        builder.yardPosition = speakerPos;
+        fusionScript.Activate();
+    }
+
     public void OpenWorkshop(Vector3 speakerPos)
     {
         builder.yardPosition = speakerPos;
         builder.Initialize(BuilderMode.Workshop);
     }
 
-    public void next(Dialogue dialogue, int ID, IInteractable speaker)
+    private void AssignRadioDisplay(Entity ent)
+    {
+        var disp = window.transform.Find("Background/RadioVisual/Radio/Holder").GetComponentInChildren<SelectionDisplayHandler>();
+        if (!disp) return;
+        if (!ent)
+        {
+            disp.ClearDisplay();
+            window.transform.Find("Background/RadioVisual/Name").GetComponent<Text>().text = "Unknown Speaker";
+
+        }
+        else disp.AssignDisplay(ent.blueprint, null, ent.faction.factionID);
+    }
+    private void next(Dialogue dialogue, int ID, IInteractable speaker, Context context = null)
     {
         if (dialogue.nodes.Count == 0)
         {
@@ -797,11 +889,11 @@ public class DialogueSystem : MonoBehaviour, IDialogueOverrideHandler
         }
 
         Dialogue.Node current = dialogue.nodes[currentIndex];
-
         // check if the node has an action
         switch (current.action)
         {
             case Dialogue.DialogueAction.None:
+            case Dialogue.DialogueAction.FinishTask:
                 AudioManager.PlayClipByID("clip_typing", true);
                 break;
             case Dialogue.DialogueAction.Outpost:
@@ -834,6 +926,10 @@ public class DialogueSystem : MonoBehaviour, IDialogueOverrideHandler
                 OpenWorkshop((Vector3)speakerPos);
                 endDialogue(0, false);
                 return;
+            case Dialogue.DialogueAction.Fusion:
+                OpenFusion((Vector3)speakerPos);
+                endDialogue(0, false);
+                return;
             case Dialogue.DialogueAction.Upgrader:
                 OpenUpgrader((Vector3)speakerPos);
                 upgraderScript.initialize();
@@ -842,26 +938,84 @@ public class DialogueSystem : MonoBehaviour, IDialogueOverrideHandler
             case Dialogue.DialogueAction.InvokeEnd:
                 endDialogue(ID, false);
                 return;
+            case Dialogue.DialogueAction.ForceToNextID:
+                next(dialogue, current.nextNodes[0], speaker, context);
+                return;
+            case Dialogue.DialogueAction.Call:
+                endDialogue(0, false);
+                var s = CoreScriptsManager.instance.GetFunction(current.functionID);
+                CoreScriptsSequence.RunSequence(s, context);
+                return;
             default:
                 break;
         }
 
-        var remastered = dialogueStyle == DialogueStyle.Remastered;
+        if (current.action == Dialogue.DialogueAction.FinishTask)
+        {
+            TaskFlow.RewardPlayer(context.missionName);
+        }
+
+        if (current.forceSpeakerChange)
+        {
+            var speakerID = current.speakerID;
+            if (current.coreScriptsMode) speakerID = CoreScriptsSequence.VariableSensitizeValue(speakerID);
+            speaker = AIData.entities.Find(x => x.ID == speakerID);
+            if (speaker != null && !speaker.Equals(null)) speakerPos = speaker.GetTransform().position;
+        }
+
+        var remastered = GetDialogueStyle() == DialogueStyle.Remastered;
         if (speaker as Entity)
         {
             var ent = speaker as Entity;
             // radio image 
+            var entName = ent.blueprint.entityName;
+            if (current.concealName) entName = "Unknown Speaker";
             if (remastered)
-                window.transform.Find("Background/Radio/Holder").GetComponentInChildren<SelectionDisplayHandler>().AssignDisplay(ent.blueprint, null, ent.faction);
-            window.transform.Find("Background/Name").GetComponent<Text>().text = remastered ? ent.blueprint.entityName : "";
+                AssignRadioDisplay(ent);
+            window.transform.Find("Background/RadioVisual/Name").GetComponent<Text>().text = remastered ? entName : "";
         }
+        else AssignRadioDisplay(null);
 
         // change text
-        text = current.text.Replace("<br>", "\n");
+        if (current.coreScriptsMode)
+        {
+            text = SendThroughCoreScripts(current.text).Replace("<br>", "\n");
+        }
+        else
+        {
+            text = current.text.Replace("<br>", "\n");
+        }
         characterCount = 0;
-        nextCharacterTime = (float)(Time.time + timeBetweenCharacters);
-        textRenderer.color = current.textColor;
 
+        if (current.typingSpeedFactor == 0) current.typingSpeedFactor = 1;
+        typingSpeedFactor = current.typingSpeedFactor;
+        nextCharacterTime = (float)(Time.time + timeBetweenCharacters / current.typingSpeedFactor);
+
+        textRenderer.color = current.textColor;
+        if (current.useSpeakerColor && speaker is Entity colorEnt) textRenderer.color = FactionManager.GetFactionColor(colorEnt.faction.factionID);
+
+        background.Find("RadioVisual").GetComponent<CanvasGroup>().alpha = 1F;
+        background.Find("TaskRewardInfo").gameObject.SetActive(false);
+        if (current.task != null)
+        {
+            var wrapper = new RewardWrapper();
+            wrapper.creditReward = (int)current.task.creditReward;
+            wrapper.partAbilityID = current.task.partReward.abilityID;
+            wrapper.partReward = !string.IsNullOrEmpty(current.task.partReward.partID);
+            wrapper.partSecondaryData = current.task.partReward.secondaryData;
+            wrapper.partTier = current.task.partReward.tier;
+            wrapper.reputationReward = current.task.reputationReward;
+            wrapper.shardReward = (int)current.task.shardReward;
+            wrapper.partID = current.task.partReward.partID;
+
+
+            background.Find("RadioVisual").GetComponent<CanvasGroup>().alpha = 0.1F;
+            background.Find("TaskRewardInfo").gameObject.SetActive(true);
+            // Objective list
+            var objectiveList = background.transform.Find("TaskRewardInfo/ObjectiveList").GetComponent<Text>();
+            objectiveList.text = current.task.useLocalMap ? SendThroughCoreScripts(current.task.objectived) : current.task.objectived;
+            SetupRewards(background.gameObject, wrapper);
+        }
         // create buttons
         buttons = new GameObject[current.nextNodes.Count];
 
@@ -877,9 +1031,26 @@ public class DialogueSystem : MonoBehaviour, IDialogueOverrideHandler
 
             Dialogue.Node next = dialogue.nodes[nextIndex];
 
-            Transform button = CreateButton(next.buttonText, null, 24 + 24 * (current.nextNodes.Count - (i + 1))).transform;
+            var buttonText = next.buttonText;
+            if (next.coreScriptsMode) buttonText = SendThroughCoreScripts(buttonText);
+            Transform button = CreateButton(buttonText, null, 24 + 24 * (current.nextNodes.Count - (i + 1))).transform;
 
-            button.GetComponent<Button>().onClick.AddListener(() => { Next(dialogue, nextIndex, speaker); });
+            if (next.action == Dialogue.DialogueAction.ForceToNextID)
+            {
+                nextIndex = next.nextNodes[0];
+            }
+            
+            int x = i;
+            button.GetComponent<Button>().onClick.AddListener(() => { 
+                if (x == 0 && current.task != null)
+                {
+                    SectorManager.instance.player.alerter.showMessage("New Task", "clip_victory");
+                    current.task.dialogue = current.text;
+                    current.task.dialogueColor = textRenderer.color;
+                    StartTaskNode.RegisterTask(current.task, context.missionName);
+                }
+                Next(dialogue, current.nextNodes[x], speaker, context); 
+            });
             if (dialogue.nodes[nextIndex].action != Dialogue.DialogueAction.Exit)
             {
                 button.GetComponent<Button>().onClick.AddListener(() =>
@@ -891,6 +1062,12 @@ public class DialogueSystem : MonoBehaviour, IDialogueOverrideHandler
 
             buttons[i] = button.gameObject;
         }
+    }
+
+    private string SendThroughCoreScripts(string val)
+    {
+        val = CoreScriptsSequence.VariableSensitizeValue(val);
+        return CoreScriptsManager.instance.GetLocalMapString(val);
     }
 
     private int getNodeIndex(Dialogue dialogue, int ID)
@@ -960,7 +1137,7 @@ public class DialogueSystem : MonoBehaviour, IDialogueOverrideHandler
     {
         currentState = DialogueState.In;
         var windowRect = window.GetComponent<RectTransform>();
-        switch (dialogueStyle)
+        switch (GetDialogueStyle())
         {
             case DialogueStyle.Original:
                 windowRect.anchorMin = windowRect.anchorMax = new Vector2(0.5F, 0.5F);
@@ -1103,6 +1280,22 @@ public class DialogueSystem : MonoBehaviour, IDialogueOverrideHandler
     public void SetSpeakerID(string ID)
     {
         speakerID = ID;
+    }
+
+    public void ClearInteractionOverrides(string entityID)
+    {
+        if (DialogueSystem.interactionOverrides.ContainsKey(entityID))
+        {
+            var stack = DialogueSystem.interactionOverrides[entityID];
+            if(stack.Count > 0)
+            {
+                DialogueSystem.interactionOverrides[entityID].Clear();
+            }
+        }
+        else
+        {
+            Debug.Log(entityID + " missing from interaction override dictionary!");
+        }
     }
 
     public void ClearCanvases()

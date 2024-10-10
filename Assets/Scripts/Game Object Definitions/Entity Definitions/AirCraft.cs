@@ -47,7 +47,7 @@ public abstract class AirCraft : Craft
     protected override void OnDeath()
     {
         var lettingServerDecide = MasterNetworkAdapter.mode != MasterNetworkAdapter.NetworkMode.Off && NetworkManager.Singleton.IsClient && !NetworkManager.Singleton.IsHost;
-        if (!FactionManager.IsAllied(0, faction) && Random.Range(0, 1F) <= 0.2F && !lettingServerDecide)
+        if (!FactionManager.IsAllied(0, faction.factionID) && Random.Range(0, 1F) <= 0.2F && !lettingServerDecide && !DialogueSystem.isInCutscene)
         {
             var x = Instantiate(energySpherePrefab, transform.position, Quaternion.identity);
 
@@ -79,7 +79,7 @@ public abstract class AirCraft : Craft
             return;
         }
 
-        if (IsMoving()) // if core is supposed to be moving 
+        if (IsMoving() || restAccel != Vector2.zero) // if core is supposed to be moving 
         {
             if (timePassed != 0)
             {
@@ -92,7 +92,7 @@ public abstract class AirCraft : Craft
             timePassed = 0; // reset time passed
             oscillating = false;
         }
-        else if ((!draggable || !draggable.dragging) && entityBody.velocity.y == 0)
+        else if ((!draggable || !draggable.Dragging) && entityBody.velocity.y == 0)
         {
             // idle oscillation time
             if (!oscillating)
@@ -131,6 +131,7 @@ public abstract class AirCraft : Craft
     public virtual void Warp(Vector3 point, bool setWarpUninteractable = true)
     {
         transform.position = point;
+        if (!(this as PlayerCore)) spawnPoint = point;
         oscillatorVector = point;
         storedPos = point;
         positionBeforeOscillation = point.y;

@@ -299,7 +299,6 @@ public class ReticleScript : MonoBehaviour
                 if (targSys.GetTarget())
                 {
                     Draggable draggable = targSys.GetTarget().GetComponent<Draggable>();
-
                     // it's draggable if it's not an entity or it's a draggable entity with the same faction
                     if (draggable && (targSys.GetTarget().position - craft.transform.position).sqrMagnitude <= 400
                                   && (!targSys.GetTarget().GetComponent<Entity>()
@@ -397,7 +396,7 @@ public class ReticleScript : MonoBehaviour
 
             // show craft related information
             shellImage.enabled = coreImage.enabled = true;
-            shellImage.color = FactionManager.GetFactionColor(ent.GetFaction());
+            shellImage.color = FactionManager.GetFactionColor(ent.GetFaction().factionID);
             coreImage.color = new Color(0.8F, 0.8F, 0.8F);
 
 

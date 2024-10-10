@@ -3,6 +3,9 @@ using System.IO;
 using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using System.Linq;
+using static Sector;
+using static Entity;
 
 [RequireComponent(typeof(LandPlatformGenerator))]
 public class SectorManager : MonoBehaviour
@@ -11,6 +14,19 @@ public class SectorManager : MonoBehaviour
     private static float deadzoneDamageMult = 0.1f;
     private static float deadzoneDamageBase = 0.2f;
     private static float deadzoneDamage = deadzoneDamageBase;
+    private static bool deadzoneDamageOverride = false;
+
+    public void SetDeadZoneDamageOverride(bool val)
+    {
+        deadzoneDamageOverride = val;
+    }
+
+    private bool DeadzoneDamageEnabled()
+    {
+        return GetCurrentType() == SectorType.DangerZone || deadzoneDamageOverride;
+    }
+
+    public static bool backgroundSpawnsEnabled = true;
 
     public delegate void SectorLoadDelegate(string sectorName);
 
@@ -34,6 +50,27 @@ public class SectorManager : MonoBehaviour
     private BattleZoneManager battleZone;
     private SiegeZoneManager siegeZone;
 
+    public bool BZActive()
+    {
+        return battleZone != null && battleZone.playing;
+    }
+
+    public bool SZActive()
+    {
+        return siegeZone != null && siegeZone.playing;
+    }
+
+    public void WinSiege()
+    {
+        if (siegeZone != null) siegeZone.playing = false;
+    }
+
+
+    public void WinBZ()
+    {
+        if (battleZone != null) battleZone.playing = false;
+    }
+
     private Dictionary<string, GameObject> objects;
 
     // TODO: Remove persistent objects. Doesn't need to be here
@@ -49,6 +86,7 @@ public class SectorManager : MonoBehaviour
 
     public List<ShardRock> shardRocks = new List<ShardRock>();
     public GameObject shardRockPrefab;
+    public GameObject gasPrefab;
     public Sector overrideProperties = null;
     public SkirmishMenu skirmishMenu;
     int maxID = 0;
@@ -84,12 +122,16 @@ public class SectorManager : MonoBehaviour
         return null;
     }
 
-    public int GetExtraCommandUnits(int faction)
+    public int GetExtraCommandUnits(EntityFaction faction)
     {
         stationsCount.Clear();
         foreach (IVendor vendor in stations)
         {
-            int stationFaction = (vendor as Entity).faction;
+            var entFaction = faction.overrideFaction == 0 ? faction.factionID : faction.overrideFaction;
+
+            var sf = (vendor as Entity).faction;
+        
+            var stationFaction = sf.overrideFaction == 0 ? sf.factionID : sf.overrideFaction;
             if (!stationsCount.ContainsKey(stationFaction))
             {
                 stationsCount.Add(stationFaction, 0);
@@ -100,9 +142,15 @@ public class SectorManager : MonoBehaviour
 
         var cnt = 0;
 
+        if (faction.overrideFaction != 0 && stationsCount.ContainsKey(faction.overrideFaction))
+        {
+            return stationsCount[faction.overrideFaction] * 3;
+        }
+
         foreach (var f in FactionManager.GetAllAlliedFactions(faction))
         {
-            if (stationsCount.ContainsKey(f)) cnt += stationsCount[f] * 3;
+            var id = f.overrideFaction == 0 ? f.factionID : f.overrideFaction;
+            if (stationsCount.ContainsKey(id)) cnt += stationsCount[id] * 3;
         }
 
         return cnt;
@@ -122,6 +170,8 @@ public class SectorManager : MonoBehaviour
         }
 
         instance = this;
+        backgroundSpawnsEnabled = true;
+        deadzoneDamageOverride = false;
 
         objects = new Dictionary<string, GameObject>();
         persistentObjects = new Dictionary<string, GameObject>();
@@ -272,7 +322,7 @@ public class SectorManager : MonoBehaviour
         }
 
         // deadzone damage
-        if (playerActive && current && GetCurrentType() == Sector.SectorType.DangerZone)
+        if (playerActive && current && DeadzoneDamageEnabled())
         {
             if (dangerZoneTimer >= 5 && !player.GetIsDead())
             {
@@ -296,7 +346,7 @@ public class SectorManager : MonoBehaviour
             dangerZoneTimer = 0;
         }
 
-        if (playerActive && !DialogueSystem.isInCutscene && !DialogueSystem.Instance.IsSpeaking())
+        if (playerActive && !DialogueSystem.isInCutscene && !DialogueSystem.Instance.IsSpeaking() && backgroundSpawnsEnabled)
         {
             bgSpawnTimer += Time.deltaTime;
 
@@ -306,7 +356,7 @@ public class SectorManager : MonoBehaviour
                 var validBgSpawns = new List<(EntityBlueprint, Sector.LevelEntity, int, float)>();
                 foreach (var spawn in bgSpawns)
                 {
-                    if (FactionManager.IsAllied(spawn.Item2.faction, player.faction))
+                    if (FactionManager.IsAllied(spawn.Item2.faction, player.faction.factionID))
                         continue;
                     validBgSpawns.Add(spawn);
                 }
@@ -424,6 +474,10 @@ public class SectorManager : MonoBehaviour
 
                 // Clear DialogueSystem statics to prevent canvas reference persistence bugs
                 DialogueSystem.ClearStatics();
+
+                if (Directory.Exists(System.IO.Path.Combine(path, "CoreScripts")))
+                    CoreScriptsManager.paths = Directory.GetFiles(System.IO.Path.Combine(path, "CoreScripts")).Where(s => 
+                     System.IO.Path.GetExtension(s) == ".corescript").ToArray();
 
                 if (Directory.Exists(System.IO.Path.Combine(path, "Canvases")))
                     foreach (var canvas in Directory.GetFiles(System.IO.Path.Combine(path, "Canvases")))
@@ -841,6 +895,7 @@ public class SectorManager : MonoBehaviour
     {
         GameObject gObj = new GameObject(data.name);
         string json = null;
+        var trueFaction = data.overrideFaction != 0 ? data.overrideFaction : data.faction;
         switch (blueprint.intendedType)
         {
             case EntityBlueprint.IntendedType.ShellCore:
@@ -868,14 +923,16 @@ public class SectorManager : MonoBehaviour
                             // add core arrow
                             if (MinimapArrowScript.instance && !(shellcore is PlayerCore))
                             {
-                                shellcore.faction = data.faction;
+                                shellcore.faction.factionID = data.faction;
+                                shellcore.faction.overrideFaction = data.overrideFaction;
+                                if (shellcore.faction.overrideFaction != 0) shellcore.ID = data.ID;
                                 MinimapArrowScript.instance.AddCoreArrow(shellcore);
                             }
 
                             // set the carrier of the shellcore to the associated faction's carrier
-                            if (carriers.ContainsKey(data.faction))
+                            if (carriers.ContainsKey(trueFaction))
                             {
-                                shellcore.SetCarrier(carriers[data.faction]);
+                                shellcore.SetCarrier(carriers[trueFaction]);
                             }
 
                             battleZone.AddTarget(shellcore);
@@ -976,17 +1033,23 @@ public class SectorManager : MonoBehaviour
 
                 blueprint.entityName = data.name;
                 AirCarrier carrier = gObj.AddComponent<AirCarrier>();
-                if (!carriers.ContainsKey(data.faction))
+                if (!carriers.ContainsKey(trueFaction))
                 {
-                    carriers.Add(data.faction, carrier);
+                    carriers.Add(trueFaction, carrier);
                     if (MasterNetworkAdapter.mode == MasterNetworkAdapter.NetworkMode.Host 
-                        && PlayerCore.Instance && data.faction == PlayerCore.Instance.faction)
+                        && PlayerCore.Instance && trueFaction == PlayerCore.Instance.faction.factionID)
                     {
                         PlayerCore.Instance.Warp(data.position);
                     }
                 }
-
                 carrier.sectorMngr = this;
+
+                if (SectorManager.instance.GetCurrentType() == SectorType.BattleZone)
+                {
+                    carrier.faction.factionID = data.faction;
+                    carrier.faction.overrideFaction = data.overrideFaction;
+                    AddTarget(carrier);
+                }
                 break;
             case EntityBlueprint.IntendedType.GroundCarrier:
                 json = data.blueprintJSON;
@@ -997,19 +1060,37 @@ public class SectorManager : MonoBehaviour
 
                 blueprint.entityName = data.name;
                 GroundCarrier gcarrier = gObj.AddComponent<GroundCarrier>();
-                if (!carriers.ContainsKey(data.faction))
+                trueFaction = data.overrideFaction == 0 ? data.faction : data.overrideFaction;
+                if (!carriers.ContainsKey(trueFaction))
                 {
-                    carriers.Add(data.faction, gcarrier);
+                    carriers.Add(trueFaction, gcarrier);
                     if (MasterNetworkAdapter.mode == MasterNetworkAdapter.NetworkMode.Host 
-                        && PlayerCore.Instance && data.faction == PlayerCore.Instance.faction)
+                        && PlayerCore.Instance && trueFaction == PlayerCore.Instance.faction.factionID)
                     {
                         PlayerCore.Instance.Warp(data.position);
                     }
                 }
 
                 gcarrier.sectorMngr = this;
+
+                if (SectorManager.instance.GetCurrentType() == SectorType.BattleZone)
+                {
+                    gcarrier.faction.factionID = data.faction;
+                    gcarrier.faction.overrideFaction = data.overrideFaction;
+                    AddTarget(gcarrier);
+                }
                 break;
             case EntityBlueprint.IntendedType.Yard:
+                json = data.blueprintJSON;
+                if (!string.IsNullOrEmpty(json))
+                {
+                    var d = blueprint.dialogue;
+                    blueprint = TryGettingEntityBlueprint(json);
+                    if (blueprint.dialogue == null) blueprint.dialogue = d;
+                }
+
+                if (!string.IsNullOrEmpty(data.name))
+                    blueprint.entityName = data.name;
                 Yard yard = gObj.AddComponent<Yard>();
                 yard.mode = BuilderMode.Yard;
                 break;
@@ -1082,6 +1163,9 @@ public class SectorManager : MonoBehaviour
                 Yard workshop = gObj.AddComponent<Yard>();
                 workshop.mode = BuilderMode.Workshop;
                 break;
+            case EntityBlueprint.IntendedType.FusionStation:
+                gObj.AddComponent<Yard>();
+                break;
             default:
                 break;
         }
@@ -1094,9 +1178,12 @@ public class SectorManager : MonoBehaviour
         }
 
         entity.sectorMngr = this;
-        entity.faction = data.faction;
+        entity.faction.factionID = data.faction;
+        entity.faction.overrideFaction = data.overrideFaction;
         entity.spawnPoint = entity.transform.position = data.position;
         entity.blueprint = blueprint;
+        if (data.isStandardTractorTarget)
+            entity.isStandardTractorTarget = data.isStandardTractorTarget;
 
         if (entity is AirCraft airCraft && data.patrolPath != null && data.patrolPath.waypoints != null && data.patrolPath.waypoints.Count > 0)
         {
@@ -1213,14 +1300,19 @@ public class SectorManager : MonoBehaviour
         lpg.LoadSector(current);
     }
 
+    public static Vector2 GetSectorCenter(Sector sector)
+    {
+        return new Vector2(sector.bounds.x + sector.bounds.w / 2, sector.bounds.y - sector.bounds.h / 2);
+    }
+
     public void AddTarget(Entity target)
     {
         if (target is ShellCore shellcore)
         {
             // set the carrier of the shellcore to the associated faction's carrier
-            if (carriers.ContainsKey(shellcore.faction))
+            if (carriers.ContainsKey(FactionManager.GetDistinguishingInteger(shellcore.faction)))
             {
-                shellcore.SetCarrier(carriers[shellcore.faction]);
+                shellcore.SetCarrier(carriers[FactionManager.GetDistinguishingInteger(shellcore.faction)]);
             }
 
             // add minimap arrow
@@ -1267,9 +1359,9 @@ public class SectorManager : MonoBehaviour
                 {
                     var playerComp = player.GetComponent<PlayerCore>();
                     battleZone.AddTarget(playerComp);
-                    if (carriers.ContainsKey(playerComp.faction))
+                    if (carriers.ContainsKey(FactionManager.GetDistinguishingInteger(playerComp.faction)))
                     {
-                        playerComp.SetCarrier(carriers[playerComp.faction]);
+                        playerComp.SetCarrier(carriers[FactionManager.GetDistinguishingInteger(playerComp.faction)]);
                     }
 
                     foreach (var partyMember in PartyManager.instance.partyMembers)
@@ -1277,9 +1369,9 @@ public class SectorManager : MonoBehaviour
                         if (!partyMember || partyMember.GetIsDead()) continue;
                         partyMember.GetAI().setMode(AirCraftAI.AIMode.Battle);
                         battleZone.AddTarget(partyMember);
-                        if (carriers.ContainsKey(partyMember.faction))
+                        if (carriers.ContainsKey(FactionManager.GetDistinguishingInteger(partyMember.faction)))
                         {
-                            partyMember.SetCarrier(carriers[partyMember.faction]);
+                            partyMember.SetCarrier(carriers[FactionManager.GetDistinguishingInteger(partyMember.faction)]);
                         }
                     }
                 }
@@ -1288,7 +1380,7 @@ public class SectorManager : MonoBehaviour
                 break;
             case Sector.SectorType.Haven:
             case Sector.SectorType.Capitol:
-                player.havenSpawnPoint = player.spawnPoint = new Vector2(current.bounds.x + current.bounds.w / 2, current.bounds.y - current.bounds.h / 2);
+                player.havenSpawnPoint = player.spawnPoint = GetSectorCenter(current);
                 player.LastDimension = current.dimension;
                 break;
             case Sector.SectorType.SiegeZone:
@@ -1301,10 +1393,9 @@ public class SectorManager : MonoBehaviour
 
                 for (int i = 0; i < current.targets.Length; i++)
                 {
+                    if (!objects.ContainsKey(current.targets[i])) continue;
                     siegeZone.AddTarget(objects[current.targets[i]].GetComponent<Entity>());
                 }
-
-                siegeZone.players.Add(PlayerCore.Instance);
                 break;
             default:
                 break;
@@ -1328,39 +1419,45 @@ public class SectorManager : MonoBehaviour
                 continue;
             }
 
-            Object obj = ResourceManager.GetAsset<Object>(current.entities[i].assetID);
-
-            if (obj is GameObject go)
-            {
-                GameObject gObj = Instantiate(go);
-
-                // TODO: Make some property for level entities that dictates whether they change on faction or not
-                if (!gObj.GetComponent<EnergyRock>() && !gObj.GetComponent<Flag>())
-                {
-                    gObj.GetComponent<SpriteRenderer>().color = FactionManager.GetFactionColor(current.entities[i].faction);
-                }
-
-                gObj.transform.position = current.entities[i].position;
-                gObj.name = current.entities[i].name;
-                if (gObj.GetComponent<ShardRock>())
-                {
-                    if (!string.IsNullOrEmpty(current.entities[i].blueprintJSON))
-                    {
-                        gObj.GetComponent<ShardRock>().tier = int.Parse(current.entities[i].blueprintJSON);
-                    }
-
-                    gObj.GetComponent<ShardRock>().ID = current.entities[i].ID;
-                }
-
-                objects.Add(current.entities[i].ID, gObj);
-            }
-            else if (obj is EntityBlueprint blueprint && (MasterNetworkAdapter.mode != MasterNetworkAdapter.NetworkMode.Client))
-            {
-                SpawnEntity(current.entities[i].assetID, current.entities[i]);
-            }
+            SpawnAsset(current.entities[i]);
         }
 
     }
+
+    public void SpawnAsset(LevelEntity entity)
+    {
+        Object obj = ResourceManager.GetAsset<Object>(entity.assetID);
+
+        if (obj is GameObject go)
+        {
+            GameObject gObj = Instantiate(go);
+
+            // TODO: Make some property for level entities that dictates whether they change on faction or not
+            if (!gObj.GetComponent<EnergyRock>() && !gObj.GetComponent<Flag>())
+            {
+                gObj.GetComponent<SpriteRenderer>().color = FactionManager.GetFactionColor(entity.faction);
+            }
+
+            gObj.transform.position = entity.position;
+            gObj.name = entity.name;
+            if (gObj.GetComponent<ShardRock>())
+            {
+                if (!string.IsNullOrEmpty(entity.blueprintJSON))
+                {
+                    gObj.GetComponent<ShardRock>().tier = int.Parse(entity.blueprintJSON);
+                }
+
+                gObj.GetComponent<ShardRock>().ID = entity.ID;
+            }
+
+            objects.Add(entity.ID, gObj);
+        }
+        else if (obj is EntityBlueprint print && (MasterNetworkAdapter.mode != MasterNetworkAdapter.NetworkMode.Client))
+        {
+            SpawnEntity(entity.assetID, entity);
+        }
+    }
+
 
     private float bgSpawnTimer = 0;
 
@@ -1397,6 +1494,12 @@ public class SectorManager : MonoBehaviour
         //unload previous sector
         UnloadCurrentSector(oldType, oldDimension);
 
+        //foreach (var core in AIData.shellCores)
+        //{
+        //    if (core is PlayerCore) continue;
+        //    core.KillShellCore();
+        //}
+        
         if (overrideProperties)
         {
             Destroy(overrideProperties);
@@ -1410,10 +1513,8 @@ public class SectorManager : MonoBehaviour
             SetPlayerVariablesOnSectorLoad();
         }
 
-        // Load entities
         LoadLevelEntities();
 
-        //Load land platforms
         LoadSectorLandPlatforms();
 
         // Restart particle and background effects to new skin if necessary
@@ -1462,11 +1563,9 @@ public class SectorManager : MonoBehaviour
         battleZone.enabled = false;
         siegeZone.enabled = false;
 
-        // sector type things
         SetSectorTypeBehavior();
 
         if (current.backgroundSpawns != null)
-        // background spawns
         {
             for (int i = 0; i < current.backgroundSpawns.Length; i++)
             {
@@ -1486,7 +1585,6 @@ public class SectorManager : MonoBehaviour
         }
 
 
-        // shards
         for (int i = 0; i < current.shardCountSet.Length; i++)
         {
             for (int j = 0; j < current.shardCountSet[i]; j++)
@@ -1500,7 +1598,15 @@ public class SectorManager : MonoBehaviour
             }
         }
 
-        // music
+        if (gasPrefab)
+            for (int i = 0; i < current.gasVortices; i++)
+            {
+                var shard = Instantiate(gasPrefab, new Vector3(
+                            Random.Range(current.bounds.x + current.bounds.w * 0.2f, current.bounds.x + current.bounds.w * 0.8f),
+                            Random.Range(current.bounds.y - current.bounds.h * 0.2f, current.bounds.y - current.bounds.h * 0.8f), 0)
+                        , Quaternion.identity);
+            }
+
         PlayCurrentSectorMusic();
 
         if (info)
@@ -1513,7 +1619,6 @@ public class SectorManager : MonoBehaviour
             OnSectorLoad.Invoke(current.sectorName);
         }
 
-        // Load sector graph
         if (SectorGraphLoad != null)
         {
             SectorGraphLoad.Invoke(current.sectorName);
@@ -1524,7 +1629,6 @@ public class SectorManager : MonoBehaviour
 
     private void UnloadCurrentSector(Sector.SectorType? lastSectorType = null, int lastDimension = 0)
     {
-        // destroy existing shard rocks
         foreach (var rock in shardRocks)
         {
             if (rock)
@@ -1533,16 +1637,28 @@ public class SectorManager : MonoBehaviour
             }
         }
 
-        var remainingObjects = new Dictionary<string, GameObject>();
-        foreach (var shard in AIData.rockFragments)
+        foreach (var gas in AIData.gas)
         {
-            if (shard && !shard.dragging)
+            if (gas)
             {
-                Destroy(shard.gameObject);
+                Destroy(gas.gameObject);
             }
         }
 
-        AIData.rockFragments.Clear();
+
+        var remainingObjects = new Dictionary<string, GameObject>();
+        var remainingRocks = new List<Draggable>();
+        foreach (var shard in AIData.rockFragments)
+        {
+            if (shard && (shard.Dragging || Vector3.SqrMagnitude(shard.transform.position - player.transform.position)
+                < objectDespawnDistance))
+            {
+                remainingRocks.Add(shard);
+            }
+            else Destroy(shard.gameObject);
+
+        }
+        AIData.rockFragments = remainingRocks;
         shardRocks.Clear();
 
         // clear minimap core arrows
@@ -1575,7 +1691,7 @@ public class SectorManager : MonoBehaviour
                         if (obj.Value.GetComponentInChildren<Entity>().ID == ch.ID && (
                             lastSectorType == null ||
                             lastSectorType != Sector.SectorType.BattleZone ||
-                            obj.Value.GetComponentInChildren<Entity>().faction == player.faction))
+                            obj.Value.GetComponentInChildren<Entity>().faction.factionID == player.faction.factionID))
                         {
                             skipTag = true;
                             break;
@@ -1790,6 +1906,17 @@ public class SectorManager : MonoBehaviour
             {
                 return pair.Value;
             }
+        }
+
+        return null;
+    }
+
+    public GameObject GetObjectByID(string ID)
+    {
+        Debug.Log($"Getting object: '{ID}'");
+        if (objects.ContainsKey(ID))
+        {
+            return objects[ID];
         }
 
         return null;

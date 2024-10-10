@@ -275,7 +275,7 @@ public class ShellPart : MonoBehaviour
         if (!craft)
             craft = transform.root.GetComponent<Entity>();
         if (craft)
-            faction = craft.faction;
+            faction = craft.faction.factionID;
         gameObject.layer = 0;
 
         if (GetComponent<Ability>())
@@ -299,6 +299,8 @@ public class ShellPart : MonoBehaviour
     {
         if (shooter)
         {
+            if (DialogueSystem.isInCutscene) return;
+            
             var weapon = GetComponent<WeaponAbility>();
             var targ = weapon.GetTarget();
             if (weapon as Ion) 
@@ -447,9 +449,10 @@ public class ShellPart : MonoBehaviour
 
     private void ShinyCheck()
     {
-        if (Random.Range(0, 4000) == 3999)
+        if (Random.Range(0, 4000) >= 3999 - Mathf.Min(400, Radar.GetRadarChain() * 10))
         {
             info.shiny = true;
+            Radar.ResetRadarChain();
             StartEmitting();
         }
     }
@@ -511,10 +514,11 @@ public class ShellPart : MonoBehaviour
         }
     }
 
+    private MaterialPropertyBlock block;
     // ignores parameter alpha, since stealthing changes it
     public void SetPartColor(Color color)
     {
-        color.a = (craft && craft.IsInvisible ? (craft.faction == 0 ? 0.2f : 0f) : color.a);
+        color.a = (craft && craft.IsInvisible ? (craft.faction.factionID == 0 ? 0.2f : 0f) : color.a);
         if (spriteRenderer) spriteRenderer.color = color;
         if (shooter && shooter.GetComponent<SpriteRenderer>())
         {
@@ -527,5 +531,32 @@ public class ShellPart : MonoBehaviour
             partSysColorMod = partSys.colorOverLifetime;
             partSysColorMod.color = new ParticleSystem.MinMaxGradient(color);
         }
+
+        SetPartShader(color);
+    }
+
+    private void SetPartShader(Color color)
+    {
+        if (block == null)
+        {
+            block = new();
+            if (spriteRenderer && spriteRenderer.sprite && spriteRenderer.sprite.texture)
+                block.SetTexture("_MainTex", spriteRenderer.sprite.texture);
+        }
+        if (block != null)
+        {
+            block.SetColor("_PerRendColor", color);
+            if (craft && craft.blueprint && !string.IsNullOrEmpty(craft.blueprint.coreShellSpriteID) && craft.blueprint.coreShellSpriteID.Contains("station_sprite"))
+            {
+                block.SetFloat("_Min", 0.07F);
+            }
+            if (!detachible)
+                block.SetFloat("_Symmetry", 0);
+            else block.SetFloat("_Symmetry", 1);
+        }
+        if (shaderMaterials != null
+            && shaderMaterials.Count > 0
+            && block != null
+            && spriteRenderer) spriteRenderer.SetPropertyBlock(block);
     }
 }

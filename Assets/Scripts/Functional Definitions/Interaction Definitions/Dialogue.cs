@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 public interface IDialogueable
@@ -17,7 +18,11 @@ public class Dialogue : ScriptableObject, IDialogueable
         Exit,
         Workshop,
         Upgrader,
-        InvokeEnd
+        InvokeEnd,
+        ForceToNextID,
+        Call,
+        FinishTask,
+        Fusion
     }
 
     public List<Node> nodes;
@@ -25,7 +30,7 @@ public class Dialogue : ScriptableObject, IDialogueable
     public VendingBlueprint vendingBlueprint;
 
     [System.Serializable]
-    public struct Node
+    public class Node
     {
         public string buttonText;
         public string text;
@@ -33,5 +38,21 @@ public class Dialogue : ScriptableObject, IDialogueable
         public int ID;
         public List<int> nextNodes;
         public DialogueAction action;
+        [NonSerialized]
+        public string speakerID;
+        [NonSerialized]
+        public bool forceSpeakerChange;
+        [NonSerialized]
+        public bool useSpeakerColor;
+        [NonSerialized]
+        public Task task;
+        [NonSerialized]
+        public string functionID;
+        [NonSerialized]
+        public float typingSpeedFactor;
+        [NonSerialized]
+        public bool coreScriptsMode;
+        [NonSerialized]
+        public bool concealName;
     }
 }

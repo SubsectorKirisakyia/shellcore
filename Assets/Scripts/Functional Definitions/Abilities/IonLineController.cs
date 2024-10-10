@@ -22,6 +22,7 @@ public class IonLineController : MonoBehaviour
     public static float damageC = 1500;
     public static float energyC = 150;
     private Entity.TerrainType terrain;
+    public bool gasBoosted;
 
     public void SetTerrain(Entity.TerrainType terrain)
     {
@@ -42,7 +43,7 @@ public class IonLineController : MonoBehaviour
         line.material = material;
         line.startWidth = line.endWidth = 0;
         line.useWorldSpace = true;
-        var col = part && part.info.shiny ? FactionManager.GetFactionShinyColor(Core.faction) : new Color(0.8F, 1F, 1F, 0.9F);
+        var col = part && part.info.shiny ? FactionManager.GetFactionShinyColor(Core.faction.factionID) : new Color(0.8F, 1F, 1F, 0.9F);
         Gradient gradient = new Gradient();
         gradient.mode = GradientMode.Fixed;
         gradient.SetKeys(
@@ -108,6 +109,7 @@ public class IonLineController : MonoBehaviour
         }
     }
 
+    private readonly float TURN_RATE = 65;
     private float UpdateBearing()
     {
         var pos = targetingSystem.GetTarget().position;
@@ -121,7 +123,8 @@ public class IonLineController : MonoBehaviour
 
         var diff = targetBearing - originalBearing;
 
-        var c = 65 * Time.deltaTime;
+        var c = TURN_RATE * Time.deltaTime;
+        if (gasBoosted) c *= 2;
         bool goForwards = false;
 
         if (originalBearing < 180)
@@ -186,7 +189,7 @@ public class IonLineController : MonoBehaviour
             var dps = damage * Time.deltaTime;
 
             var damageable = CollisionManager.RaycastDamageable(transform.position, transform.position + GetVectorByBearing(originalBearing) * range, VerifyTarget, out var point);
-            if (damageable != null)
+            if (damageable != null && line.positionCount > 1)
             {
                 var hitTransform = damageable.GetTransform();
 
@@ -194,11 +197,33 @@ public class IonLineController : MonoBehaviour
                 line.SetPosition(1, transform.position + GetVectorByBearing(originalBearing) * magnitude);
                 Core.TakeEnergy(energyCost * Time.deltaTime);
 
-                var part = hitTransform.GetComponentInChildren<ShellPart>();
 
+                ShellPart part = null;
+                var dEnt = damageable as Entity;
+                if (!dEnt) return;
+                var colliders = dEnt.GetColliders();
                 var residue = damageable.TakeShellDamage(dps, 0, GetComponentInParent<Entity>());
+                if (dEnt)
+                {
+                    for (int i = 0; i < colliders.Length / 4; i++)
+                    {
+                        if (SATCollision.PointInRectangle(
+                            colliders[i * 4 + 0],
+                            colliders[i * 4 + 1],
+                            colliders[i * 4 + 2],
+                            colliders[i * 4 + 3],
+                            line.GetPosition(1)))
+                        {
+                            if (i == (colliders.Length / 4) - 1)
+                            {
+                                dEnt.TakeCoreDamage(residue);
+                            }
+                            else part = dEnt.parts[i];
+                            break;
+                        }
+                    }
+                }
 
-                // deal instant damage
 
                 if (part)
                 {
@@ -220,7 +245,7 @@ public class IonLineController : MonoBehaviour
         {
             if (!targetingSystem.GetTarget() && duration > 0)
             {
-                duration = 0;
+                duration -= Time.deltaTime;
             }
 
             if (line.startWidth > startWidth)
@@ -240,7 +265,7 @@ public class IonLineController : MonoBehaviour
 
     bool VerifyTarget(Entity entity)
     {
-        return entity.GetFaction() != Core.faction && !entity.GetIsDead() && !entity.IsInvisible && (entity.GetTerrain() == terrain || terrain == Entity.TerrainType.All);
+        return !FactionManager.IsAllied(entity.faction, Core.faction) && !entity.GetIsDead() && !entity.IsInvisible && (entity.GetTerrain() == terrain || terrain == Entity.TerrainType.All);
     }
 
     public float GetDuration()
@@ -251,6 +276,11 @@ public class IonLineController : MonoBehaviour
     float GetBearingFromVector(Vector2 vec)
     {
         var angle = Mathf.Atan(vec.y / vec.x) * Mathf.Rad2Deg;
+        if (vec.x == 0)
+        {
+            return vec.y > 0 ? 90 : 270;
+        }
+
         if (vec.x > 0)
         {
             if (angle > 0)

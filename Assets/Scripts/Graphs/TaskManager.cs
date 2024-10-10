@@ -4,11 +4,12 @@ using NodeEditorFramework.IO;
 using NodeEditorFramework.Standard;
 using UnityEngine;
 using UnityEngine.Events;
+using static CoreScriptsManager;
 
 public interface IDialogueOverrideHandler
 {
     Dictionary<string, Stack<InteractAction>> GetInteractionOverrides();
-    void PushInteractionOverrides(string entityID, InteractAction action, Traverser traverser);
+    void PushInteractionOverrides(string entityID, InteractAction action, Traverser traverser, Context context = null);
     void SetNode(ConnectionPort node);
     void SetNode(Node node);
     void SetSpeakerID(string ID);
@@ -17,10 +18,11 @@ public interface IDialogueOverrideHandler
 public class InteractAction 
 {
     public int taskHash;
-    public string taskID;
+    public string taskMissionName;
     public UnityAction action;
     public Traverser traverser;
     public bool prioritize;
+    public Context context;
 }
 
 public class TaskManager : MonoBehaviour, IDialogueOverrideHandler
@@ -43,16 +45,15 @@ public class TaskManager : MonoBehaviour, IDialogueOverrideHandler
     public class ObjectiveLocation
     {
         public Vector2 location;
-        public bool exactLocation;
         public Entity followEntity;
         public string missionName;
         public int dimension;
+        public Color color = Color.red + Color.green / 2;
 
-        public ObjectiveLocation(Vector2 location, bool exactLocation, string missionName, int dimension, Entity followEntity = null)
+        public ObjectiveLocation(Vector2 location, string missionName, int dimension, Entity followEntity = null)
         {
             this.missionName = missionName;
             this.location = location;
-            this.exactLocation = exactLocation;
             this.followEntity = followEntity;
             this.dimension = dimension;
         }
@@ -65,12 +66,39 @@ public class TaskManager : MonoBehaviour, IDialogueOverrideHandler
     public Dictionary<string, string> offloadingMissions = new Dictionary<string, string>();
     public Dictionary<string, List<string>> offloadingSectors = new Dictionary<string, List<string>>();
 
-    public void PushInteractionOverrides(string entityID, InteractAction action, Traverser traverser) 
+    public void ClearInteractionOverrides(string entityID)
+    {
+        if (TaskManager.interactionOverrides.ContainsKey(entityID))
+        {
+            var stack = TaskManager.interactionOverrides[entityID];
+            if(stack.Count > 0)
+            {
+                TaskManager.interactionOverrides[entityID].Clear();
+            }
+        }
+        else
+        {
+            Debug.Log(entityID + " missing from interaction override dictionary!");
+        }
+    }
+
+    public void PushInteractionOverrides(string entityID, InteractAction action, Traverser traverser, Context context = null) 
     {
         MissionTraverser missionTraverser = traverser as MissionTraverser;
-        action.taskHash = missionTraverser.taskHash;
-        action.traverser = traverser;
-        action.taskID = missionTraverser.nodeCanvas.missionName;
+        if (missionTraverser != null)
+        {
+            action.taskHash = missionTraverser.taskHash;
+            action.traverser = traverser;
+            action.taskMissionName = missionTraverser.nodeCanvas.missionName;
+        }
+        else if (context != null)
+        {
+            action.taskMissionName = context.missionName;
+            action.context = context;
+            action.taskHash = context.taskHash;
+        }
+
+
         if (GetInteractionOverrides().ContainsKey(entityID))
         {
             GetInteractionOverrides()[entityID].Push(action);
@@ -108,9 +136,9 @@ public class TaskManager : MonoBehaviour, IDialogueOverrideHandler
         MissionCondition.OnMissionStatusChange = null;
         SetPartDropRateNode.del = null;
         VariableConditionNode.OnVariableUpdate = null;
-        WinBattleCondition.OnBattleLose = null;
-        WinBattleCondition.OnBattleWin = null;
-        WinSiegeCondition.OnSiegeWin = null;
+        CoreScriptsManager.OnBattleLose = null;
+        CoreScriptsManager.OnBattleWin = null;
+        CoreScriptsManager.OnSiegeWin = null;
         YardCollectCondition.OnYardCollect = null;
         UpgradeCoreCondition.OnCoreUpgrade = new UnityEvent();
         UsePartCondition.OnPlayerReconstruct = new UnityEvent();
@@ -313,8 +341,8 @@ public class TaskManager : MonoBehaviour, IDialogueOverrideHandler
         SectorLimiterNode.LimitedSector = "";
         Entity.OnEntityDeath = null;
         UsePartCondition.OnPlayerReconstruct = new UnityEvent();
-        WinBattleCondition.OnBattleWin = null;
-        WinBattleCondition.OnBattleLose = null;
+        CoreScriptsManager.OnBattleWin = null;
+        CoreScriptsManager.OnBattleLose = null;
         SectorManager.SectorGraphLoad += startSectorGraph;
 
         initialized = true;
@@ -328,6 +356,8 @@ public class TaskManager : MonoBehaviour, IDialogueOverrideHandler
         {
             path = System.IO.Path.Join("\\\\?\\", path);
         }
+
+        if (!System.IO.File.Exists(path)) return null;
         return XMLImport.Import(path);
     }
 

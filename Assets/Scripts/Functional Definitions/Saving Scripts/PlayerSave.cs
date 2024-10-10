@@ -48,14 +48,14 @@ public class PlayerSave
     public int[] taskVariableValues;
     public int[] abilityCaps;
     public int shards;
+    public float gas;
+    public int fusionEnergy;
     public WorldData.CharacterData[] characters;
     public List<string> sectorsSeen;
     public List<EntityBlueprint.PartInfo> partsSeen;
     public List<EntityBlueprint.PartInfo> partsObtained;
     public List<Mission> missions;
     public int reputation;
-    public int[] factions;
-    public int[] relations;
 
     // Episode count is slightly non-trivial.
     // Episode 1 is 0, episode 2 is 1, and so on.
@@ -70,4 +70,6 @@ public class PlayerSave
     public AbilityHotkeyStruct abilityHotkeys;
     public List<string> locationBasedShardsFound;
     public int lastDimension;
+    public List<string> coreScriptsGlobalVarNames;
+    public List<string> coreScriptsGlobalVarValues;
 }

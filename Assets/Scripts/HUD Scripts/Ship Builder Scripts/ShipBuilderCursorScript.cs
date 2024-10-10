@@ -1,10 +1,15 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using UnityEngine.UI;
 
 public class ShipBuilderCursorScript : MonoBehaviour, IShipStatsDatabase
 {
+    private const float ZoomMax = 2.5f;
+    private const float ZoomMin = 0.5f;
+    private const float ZoomStep = 0.1f;
+    
     public List<ShipBuilderPart> parts = new List<ShipBuilderPart>();
     public Canvas canvas;
     public RectTransform grid;
@@ -34,20 +39,12 @@ public class ShipBuilderCursorScript : MonoBehaviour, IShipStatsDatabase
     bool clickedOnce;
     float timer;
 
-    public static bool isMouseOnGrid = false;
+    public bool IsMouseOnGrid => RectTransformUtility.RectangleContainsScreenPoint(grid2mask, Input.mousePosition);
 
-    private float zoomMax = 2.5f;
-    private float zoomMin = 0.5f;
-    private float zoomStep = 0.1f;
-    private float zoom;
     private float Zoom
     {
-        get { return zoom; }
-        set
-        {
-            zoom = value;
-            grid.localScale = new Vector3(1, 1, 0) * value;
-        }
+        get => grid.localScale.x;
+        set => grid.localScale = new Vector3(1, 1, 0) * value;
     }
 
     public void SetMode(BuilderMode mode)
@@ -160,7 +157,7 @@ public class ShipBuilderCursorScript : MonoBehaviour, IShipStatsDatabase
                     ? ShipBuilder.TransferMode.Return
                     : ShipBuilder.TransferMode.Buy);
             }
-            else if (!isMouseOnGrid)
+            else if (!IsMouseOnGrid)
             {
                 dispatch = true;
                 mode = ShipBuilder.TransferMode.Return;
@@ -274,19 +271,17 @@ public class ShipBuilderCursorScript : MonoBehaviour, IShipStatsDatabase
         }
     }
 
-    public EntityBlueprint.PartInfo? GetPartCursorIsOn()
+    public EntityBlueprint.PartInfo? GetInfoForHoveredPartInGrid()
     {
-        foreach (ShipBuilderPart part in parts)
+        if (IsMouseOnGrid)
         {
-            if (RectTransformUtility.RectangleContainsScreenPoint(part.rectTransform, Input.mousePosition))
+            foreach (ShipBuilderPart part in parts)
             {
-                return part.info;
+                if (RectTransformUtility.RectangleContainsScreenPoint(part.rectTransform, Input.mousePosition))
+                {
+                    return part.info;
+                }
             }
-        }
-
-        if (builder is ShipBuilder shipBuilder)
-        {
-            return shipBuilder.RequestInventoryMouseOverInfo();
         }
 
         return null;
@@ -418,8 +413,6 @@ public class ShipBuilderCursorScript : MonoBehaviour, IShipStatsDatabase
     {
         UpdateCompact();
 
-        isMouseOnGrid = RectTransformUtility.RectangleContainsScreenPoint(grid2mask, Input.mousePosition);
-
         if (clickedOnce)
         {
             if (timer > 0.2F)
@@ -436,12 +429,9 @@ public class ShipBuilderCursorScript : MonoBehaviour, IShipStatsDatabase
 
         if (Input.GetKeyDown(KeyCode.C) && (!searchField.isFocused && !jsonField.activeSelf && !WCWorldIO.active))
         {
-            if (builder as ShipBuilder == null || !(builder as ShipBuilder).Equals(null))
+            if (!builder.GetComponentsInChildren<InputField>().ToArray().Any(inputField => inputField.isFocused))
             {
-                if (!(new List<InputField>((builder as ShipBuilder).GetComponentsInChildren<InputField>())).Exists(f => f.isFocused))
-                {
-                    ClearAllParts();
-                }
+                builder.RequestClearParts();
             }
         }
 
@@ -572,11 +562,6 @@ public class ShipBuilderCursorScript : MonoBehaviour, IShipStatsDatabase
     // symmetry mode enables checks based on symmetryPart - same part ID, ability ID, different mirrored
     public ShipBuilderPart FindPart(Vector2 vector, ShipBuilderPart symmetryPart, bool useBounds = false)
     {
-        if (!isMouseOnGrid)
-        {
-            return null;
-        }
-
         for (int i = parts.Count - 1; i >= 0; i--)
         {
             var origPos = transform.position;
@@ -678,14 +663,14 @@ public class ShipBuilderCursorScript : MonoBehaviour, IShipStatsDatabase
 
     private void HandleZooming()
     {
-        if (Input.mouseScrollDelta.y == 0 || !isMouseOnGrid || !PointerOverDetector.isPointerOver)
+        if (Input.mouseScrollDelta.y == 0 || !IsMouseOnGrid || !PointerOverDetector.isPointerOver)
         {
             return;
         }
 
         float oldZoom = Zoom;
 
-        Zoom = Mathf.Clamp(Zoom + Input.mouseScrollDelta.y * zoomStep * Zoom, zoomMin, zoomMax);
+        Zoom = Mathf.Clamp(Zoom + Input.mouseScrollDelta.y * ZoomStep * Zoom, ZoomMin, ZoomMax);
 
         // Move grid to keep mouse at the same position after zooming
         Vector3 mousePositionRelativeToGridCenter = (Input.mousePosition - grid.position) / oldZoom;

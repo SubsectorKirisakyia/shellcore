@@ -66,8 +66,12 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
             }
         }
     }
-
-    public int faction; // What side the entity belongs to (0 = green, 1 = red, 2 = olive...)
+    public struct EntityFaction
+    {
+        public int factionID;
+        public int overrideFaction;
+    }
+    public EntityFaction faction; // What side the entity belongs to (0 = green, 1 = red, 2 = olive...)
     public EntityBlueprint blueprint; // blueprint of entity containing parts
     public Vector3 spawnPoint;
     public Dialogue dialogue; // dialogue of entity
@@ -136,6 +140,24 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
     public delegate void EntityRangeCheckDelegate(float range);
     public EntityRangeCheckDelegate RangeCheckDelegate;
     private bool rpcCalled = false;
+
+    public IEnumerator pinDownCosmetic;
+
+    public void StopPinDownCosmetic()
+    {
+        if (pinDownCosmetic != null)
+        {
+            StopCoroutine(pinDownCosmetic);
+            pinDownCosmetic = null;
+        }
+
+        foreach (var part in GetComponentsInChildren<ShellPart>())
+        {
+            var x = part.GetComponentInChildren<MissileAnimationScript>();
+            if (x) Destroy(x.gameObject);
+        }
+    }
+
     public void AttemptCreateNetworkObject(bool isPlayer)
     {
         if (!networkAdapter && !rpcCalled) // should only happen to players, drones, towers, tanks, or turrets
@@ -149,11 +171,11 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
 
             if (MasterNetworkAdapter.mode != NetworkMode.Server && this as PlayerCore)
             {
-                MasterNetworkAdapter.instance.CreatePlayerServerRpc(MasterNetworkAdapter.playerName, SectorManager.GetNetworkSafeBlueprintString(MasterNetworkAdapter.blueprint), faction);
+                MasterNetworkAdapter.instance.CreatePlayerServerRpc(MasterNetworkAdapter.playerName, SectorManager.GetNetworkSafeBlueprintString(MasterNetworkAdapter.blueprint), faction.factionID);
             }
             else if (MasterNetworkAdapter.mode != NetworkMode.Client)
             {
-                MasterNetworkAdapter.instance.CreateNetworkObjectWrapper(MasterNetworkAdapter.playerName, blueprintString, idToGrab, false, faction, transform.position);
+                MasterNetworkAdapter.instance.CreateNetworkObjectWrapper(MasterNetworkAdapter.playerName, blueprintString, idToGrab, false, faction.factionID, transform.position);
             }
             rpcCalled = true;
         }
@@ -166,7 +188,9 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
 
     private void UpdateRenderer(Renderer renderer)
     {
-        var finalAlpha = IsInvisible ? FactionManager.IsAllied(PlayerCore.Instance ? PlayerCore.Instance.faction : 0, faction) ? 0.2f : 0f : FactionManager.GetFactionColor(faction).a;
+        EntityFaction fac = new EntityFaction();
+        if (PlayerCore.Instance) fac = PlayerCore.Instance.faction;
+        var finalAlpha = IsInvisible ? FactionManager.IsAllied(fac, faction) ? 0.2f : 0f : FactionManager.GetFactionColor(faction.factionID).a;
         if (renderer is SpriteRenderer spriteRenderer)
         {
             var c = spriteRenderer.color;
@@ -201,7 +225,9 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
         if (glowParticleSystem)
         {
             var main = glowParticleSystem.main;
-            var finalAlpha = IsInvisible ? FactionManager.IsAllied(PlayerCore.Instance ? PlayerCore.Instance.faction : 0, faction) ? 0.2f : 0f : FactionManager.GetFactionColor(faction).a;
+            EntityFaction fac = new EntityFaction();
+            if (PlayerCore.Instance) fac = PlayerCore.Instance.faction;
+            var finalAlpha = IsInvisible ? FactionManager.IsAllied(fac, faction) ? 0.2f : 0f : FactionManager.GetFactionColor(faction.factionID).a;
             var startColor = main.startColor;
             var color = main.startColor.colorMax;
             color.a = finalAlpha;
@@ -279,10 +305,15 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
         CurrentHealth = fracs;
     }
 
+    public bool damageBoostGasBoosted;
+    public bool stealthGasBoosted;
+    public int flatDamageIncrease;
     // Performs calculations based on current damage boost and control stats to determine final damage addition
     private void CalculateDamageBoost()
     {
-        damageFactor = controlStacks * Control.damageFactor + damageBoostStacks * DamageBoost.damageFactor;
+        flatDamageIncrease = damageBoostGasBoosted ? 200 * damageBoostStacks : 0;
+        var damageBoostFactorAddition = damageBoostGasBoosted ? 0 : damageBoostStacks * DamageBoost.damageFactor;
+        damageFactor = controlStacks * Control.damageFactor + damageBoostFactorAddition;
     }
 
     private int stealths = 0;
@@ -307,6 +338,8 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
     [HideInInspector]
     public int absorptions = 0;
 
+    public bool canUseAbilities = true;
+
     public bool isAbsorbing // if true, all incoming damage is converted to energy
     {
         get { return absorptions > 0; }
@@ -317,6 +350,7 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
     protected Entity lastDamagedBy;
 
     public string entityName;
+    public bool isStandardTractorTarget;
 
     private float weaponGCD = 0.1F; // weapon global cooldown
     public float WeaponGCD {
@@ -395,13 +429,13 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
             Dictionary<string, InteractAction> actionsByMission = new Dictionary<string, InteractAction>();
             foreach (var ovr in TaskManager.interactionOverrides[ID])
             {
-                if (actionsByMission.ContainsKey(ovr.taskID)) continue;
+                if (actionsByMission.ContainsKey(ovr.taskMissionName)) continue;
                 if (ovr.prioritize) 
                 {
                     ovr.action.Invoke();
                     return;
                 }
-                actionsByMission.Add(ovr.taskID, ovr);
+                actionsByMission.Add(ovr.taskMissionName, ovr);
             }
 
             if (actionsByMission.Count == 1)
@@ -423,7 +457,7 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
             if (dialogue.nodes != null && dialogue.nodes.Count > 0)
             {
                 var tmp = dialogue.nodes[0];
-                tmp.textColor = FactionManager.GetFactionColor(faction);
+                tmp.textColor = FactionManager.GetFactionColor(faction.factionID);
                 dialogue.nodes[0] = tmp;
             }
             DialogueSystem.StartDialogue(dialogue, this);
@@ -436,7 +470,7 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
         dlg.nodes = new List<Dialogue.Node>();
         var node = new Dialogue.Node();
         node.text = "...";
-        node.textColor = FactionManager.GetFactionColor(faction);
+        node.textColor = FactionManager.GetFactionColor(faction.factionID);
         node.ID = 0;
         node.nextNodes = new List<int>();
         dlg.nodes.Add(node);
@@ -444,7 +478,9 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
         foreach (var kvp in actionsByMission)
         {
             var node2 = new Dialogue.Node();
-            node2.buttonText = $"Talk about {kvp.Key}.";
+            var mission = TaskDisplayScript.GetMission(kvp.Key);
+            var str = mission.useLocalMap ? CoreScriptsManager.instance.GetLocalMapString(mission.name) :  mission.name;
+            node2.buttonText = $"Talk about {str}.";
             node2.ID = i;
             node2.text = "";
             node2.nextNodes = new List<int>();
@@ -501,7 +537,7 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
             while (TaskManager.interactionOverrides[ID].Count > 0)
             {
                 InteractAction action = TaskManager.interactionOverrides[ID].Peek();
-                if ((action.traverser as MissionTraverser).taskHash == action.taskHash)
+                if ((action.traverser is MissionTraverser mt && mt.taskHash == action.taskHash) || (action.context != null && action.context.taskHash == action.taskHash))
                 {
                     interactible = true;
                     break;
@@ -529,7 +565,7 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
             interactible = false;
         }
 
-        if (this as ShellCore && (SectorManager.instance.current.type == Sector.SectorType.BattleZone || SectorManager.instance.current.type == Sector.SectorType.SiegeZone))
+        if (this as ShellCore && (SectorManager.instance.BZActive() || SectorManager.instance.SZActive()))
         {
             interactible = false;
         }
@@ -572,6 +608,10 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
         }
     }
 
+    public virtual void SetOverrideFaction(int overrideFac)
+    {
+        faction.overrideFaction = overrideFac;
+    }
     protected void AttemptAddComponents()
     {
         if (!GetComponent<SortingGroup>())
@@ -589,11 +629,11 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
             }
         }
 
-        if (!transform.Find("Shell Sprite")) // no shell in hierarchy yet? no problem
+        if (!transform.Find("Shell Sprite"))
         {
-            GameObject childObject = new GameObject("Shell Sprite"); // create the child gameobject
-            childObject.transform.SetParent(transform, false); // set to child
-            SpriteRenderer renderer = childObject.AddComponent<SpriteRenderer>(); // add renderer
+            GameObject childObject = new GameObject("Shell Sprite");
+            childObject.transform.SetParent(transform, false);
+            SpriteRenderer renderer = childObject.AddComponent<SpriteRenderer>();
             if (blueprint)
             {
                 // check if it contains a blueprint (it should)
@@ -608,14 +648,14 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
             part.detachible = false;
             shell = part;
             renderer.sortingLayerName = "Default";
-            renderer.color = FactionManager.GetFactionColor(faction); // needed to reset outpost colors
+            renderer.color = FactionManager.GetFactionColor(faction.factionID); // needed to reset outpost colors
         }
         else
         {
             var renderer = transform.Find("Shell Sprite").GetComponent<SpriteRenderer>();
-            transform.Find("Shell Sprite").GetComponent<ShellPart>().SetFaction(faction);
+            transform.Find("Shell Sprite").GetComponent<ShellPart>().SetFaction(faction.factionID);
             renderer.sprite = ResourceManager.GetAsset<Sprite>(blueprint.coreShellSpriteID);
-            renderer.color = FactionManager.GetFactionColor(faction); // needed to reset outpost colors
+            renderer.color = FactionManager.GetFactionColor(faction.factionID); // needed to reset outpost colors
             renderer.sortingLayerName = "Default";
         }
 
@@ -625,7 +665,7 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
             explosionCirclePrefab.transform.SetParent(transform, false);
             LineRenderer lineRenderer = explosionCirclePrefab.AddComponent<LineRenderer>();
             lineRenderer.material = ResourceManager.GetAsset<Material>("white_material");
-            explosionCirclePrefab.AddComponent<DrawCircleScript>().SetStartColor(FactionManager.GetFactionColor(faction));
+            explosionCirclePrefab.AddComponent<DrawCircleScript>().SetStartColor(FactionManager.GetFactionColor(faction.factionID));
             explosionCirclePrefab.SetActive(false);
         }
 
@@ -635,7 +675,7 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
             explosionLinePrefab.transform.SetParent(transform, false);
             LineRenderer lineRenderer = explosionLinePrefab.AddComponent<LineRenderer>();
             lineRenderer.material = ResourceManager.GetAsset<Material>("white_material");
-            explosionLinePrefab.AddComponent<DrawLineScript>().SetStartColor(FactionManager.GetFactionColor(faction));
+            explosionLinePrefab.AddComponent<DrawLineScript>().SetStartColor(FactionManager.GetFactionColor(faction.factionID));
             explosionLinePrefab.SetActive(false);
         }
 
@@ -653,11 +693,11 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
         {
             SpriteRenderer renderer = gameObject.AddComponent<SpriteRenderer>();
             renderer.material = ResourceManager.GetAsset<Material>("material_color_swap");
-            renderer.color = FactionManager.GetFactionColor(faction);
+            renderer.color = FactionManager.GetFactionColor(faction.factionID);
         }
         else
         {
-            GetComponent<SpriteRenderer>().color = FactionManager.GetFactionColor(faction); // needed to reset outpost colors
+            GetComponent<SpriteRenderer>().color = FactionManager.GetFactionColor(faction.factionID); // needed to reset outpost colors
         }
 
         if (!GetComponent<Rigidbody2D>())
@@ -784,7 +824,7 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
             {
                 glowParticleSystem.gameObject.SetActive(PlayerPrefs.GetString("CoreGlow_active", "True") == "True");
                 var main = glowParticleSystem.main;
-                main.startColor = FactionManager.GetFactionColor(faction);
+                main.startColor = FactionManager.GetFactionColor(faction.factionID);
                 glowParticleSystem.Stop();
                 glowParticleSystem.Play();
             } 
@@ -896,7 +936,7 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
         IsInvisible = false;
 
         // check to see if the entity is interactible
-        if (dialogue && FactionManager.IsAllied(0, faction))
+        if (dialogue && FactionManager.IsAllied(0, faction.factionID))
         {
             interactible = true;
         }
@@ -1084,8 +1124,9 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
         {
             parts.ForEach(p =>
             {
-                var spriteRenderer = p?.transform.Find("Shooter")?.GetComponent<SpriteRenderer>();
-                if (spriteRenderer)
+                if (!p || !p.transform || !p.transform.Find("Shooter")) return;
+                var spriteRenderer = p.transform.Find("Shooter").GetComponent<SpriteRenderer>();
+                if (spriteRenderer && shellRenderer)
                 {
                     spriteRenderer.sortingOrder = shellRenderer.sortingOrder + 1;
                 }
@@ -1103,7 +1144,18 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
     /// </summary>
     protected virtual void OnDeath()
     {
+        StopPinDownCosmetic();
         // set death, interactibility and immobility
+        if (this is PlayerCore core) 
+        {
+            core.cursave.gas = Mathf.Max(0, core.cursave.gas - 100);
+            if (CoreScriptsManager.instance && CoreScriptsManager.OnVariableUpdate != null)
+            {
+                CoreScriptsManager.OnVariableUpdate.Invoke("Gas()");
+            }
+            Radar.ResetRadarOdds();
+            ShardCountScript.DisplayCount();
+        }
         IsInvisible = false;
         serverSyncHealthDirty = true;
         RememberWeaponActivationStates();
@@ -1113,6 +1165,11 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
             {
                 ability.SetDestroyed(true);
             }
+        }
+
+        if (hat)
+        {
+            Destroy(hat);
         }
 
         if (MasterNetworkAdapter.mode != MasterNetworkAdapter.NetworkMode.Off && NetworkManager.Singleton.IsServer && networkAdapter)
@@ -1133,7 +1190,7 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
         AudioManager.PlayClipByID("clip_explosion1", transform.position);
 
         // Roll on each part
-        if (!FactionManager.IsAllied(0, faction) && !(this as PlayerCore) && this is ShellCore shellCore &&
+        if (!FactionManager.IsAllied(0, faction.factionID) && !(this as PlayerCore) && this is ShellCore shellCore &&
             shellCore.GetCarrier() == null)
         {
             // extract non-shell parts
@@ -1163,7 +1220,7 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
         {
             player.AddCredits(Random.Range(1, 5));
 
-            if (this as ShellCore && !FactionManager.IsAllied(0, faction))
+            if (this as ShellCore && !FactionManager.IsAllied(0, faction.factionID))
             {
                 foreach (var part in blueprint.parts)
                 {
@@ -1228,6 +1285,7 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
 
     protected virtual void OnDestroy()
     {
+
         if (AIData.entities.Contains(this))
         {
             AIData.entities.Remove(this);
@@ -1265,7 +1323,7 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
         
     }
 
-
+    private GameObject hat;
     virtual protected void Start()
     {
         BuildEntity(); // Generate shell parts around the entity
@@ -1278,12 +1336,18 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
         busyTimer = 0; // reset busy timer
         weaponGCD = 0.1F;
         if (SectorManager.instance && SectorManager.instance.current &&
-        SectorManager.instance.current.type == Sector.SectorType.BattleZone && ((new List<string>(SectorManager.instance.current.targets)).Contains(ID) || (networkAdapter != null && networkAdapter.isPlayer.Value)) )
+        SectorManager.instance.GetCurrentType() == Sector.SectorType.BattleZone && ((new List<string>(SectorManager.instance.current.targets)).Contains(ID) || (networkAdapter != null && networkAdapter.isPlayer.Value)) )
         {
             SectorManager.instance.AddTarget(this);
         }
         initialized = true;
         if (MasterNetworkAdapter.mode != MasterNetworkAdapter.NetworkMode.Off && !MasterNetworkAdapter.lettingServerDecide && networkAdapter) networkAdapter.serverReady.Value = true;
+        if (hat) Destroy(hat);
+        if (System.DateTime.Today.Month == 12 && System.DateTime.Today.Day == 25)
+        {
+            hat = Instantiate(ResourceManager.GetAsset<GameObject>("santa_hat"), transform);
+            hat.GetComponentInChildren<SpriteRenderer>().color = FactionManager.GetFactionColor(faction.factionID);
+        }
     }
 
     protected void ActivatePassives()
@@ -1303,6 +1367,10 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
             AttemptCreateNetworkObject(this as PlayerCore);
         if (!initialized) return;
         TickState();
+        if (hat)
+        {
+            hat.transform.rotation = Quaternion.LookRotation(Vector3.forward);
+        }
         if ((oldPos - (Vector2)transform.position).sqrMagnitude > CollisionManager.movementThreshold)
         {
             oldPos = transform.position;
@@ -1318,6 +1386,9 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
     /// <param name="maxHealth">the maximum value this health can have</param>
     protected void RegenHealth(ref float currentHealth, float regenRate, float maxHealth)
     {
+        if (this.IsInvisible && !stealthGasBoosted && !(this is PlayerCore && DevConsoleScript.godModeEnabled))
+            return;
+            
         var oldCurrentHealth = currentHealth;
         if (currentHealth + (regenRate * Time.deltaTime) > maxHealth) // if it would overheal
         {
@@ -1352,7 +1423,7 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
 
         foreach (var aura in AIData.auras)
         {
-            if (aura.Core.faction != faction) continue;
+            if (!FactionManager.IsAllied(aura.Core.faction, faction)) continue;
             if (Vector2.Distance(aura.transform.position, transform.position) > aura.GetRange()) continue;
             switch (aura.type)
             {
@@ -1395,6 +1466,17 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
             DeathHandler();
         UpdateInteractible();
         UpdateAuras();
+        
+        foreach (var gas in AIData.gas)
+        {
+            var radius = gas.radius;
+            if (Vector2.SqrMagnitude(transform.position - gas.transform.position) < 10F)
+            {
+                TakeCoreDamage(500 * Time.deltaTime);
+            }
+        }
+        
+
         if (isDead) // if the craft is dead
         {
             GetComponent<SpriteRenderer>().enabled = false; // disable craft sprite
@@ -1609,7 +1691,7 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
         serverSyncHealthDirty = true;
         if (amount != 0 && ReticleScript.instance && ReticleScript.instance.DebugMode)
         {
-            Debug.Log($"Damage: {amount} (f {lastDamagedBy?.faction} -> {faction})");
+            Debug.Log($"Damage: {amount} (Factions: {lastDamagedBy?.faction.factionID} -> {faction.factionID})");
         }
 
         if (isAbsorbing && amount > 0f)
@@ -1661,6 +1743,11 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
     public virtual void TakeCoreDamage(float amount)
     {
         if (DialogueSystem.isInCutscene) return;
+        CoreDamageWrapper(amount);
+    }
+
+    public void CoreDamageWrapper(float amount)
+    {
         if (isAbsorbing && amount > 0f)
         {
             TakeEnergy(-amount);
@@ -1802,7 +1889,7 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
         return name;
     }
 
-    public int GetFaction()
+    public EntityFaction GetFaction()
     {
         return faction;
     }
@@ -1826,8 +1913,9 @@ public class Entity : MonoBehaviour, IDamageable, IInteractable
     protected void TickAbilitiesAsStation()
     {
         if (MasterNetworkAdapter.mode == NetworkMode.Client) return;
+        if (!canUseAbilities) return;
 
-        var enemyTargetFound = SectorManager.instance?.current?.type != Sector.SectorType.BattleZone;
+        var enemyTargetFound = SectorManager.instance.GetCurrentType() != Sector.SectorType.BattleZone;
         if (!enemyTargetFound && BattleZoneManager.getTargets() != null && BattleZoneManager.getTargets().Length > 0)
         {
             foreach (var target in BattleZoneManager.getTargets())

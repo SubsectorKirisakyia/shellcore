@@ -1,4 +1,5 @@
-﻿using UnityEngine;
+﻿using System.Collections;
+using UnityEngine;
 
 /// <summary>
 /// Immobilizes the nearest enemy
@@ -8,7 +9,7 @@ public class PinDown : ActiveAbility
     Craft target;
     const float range = 15f;
     float rangeSquared = range * range;
-    private static float PINDOWN_ACTIVE_DURATION = 5f;
+    private static readonly float PINDOWN_ACTIVE_DURATION = 5f;
 
     public override float GetRange()
     {
@@ -42,26 +43,54 @@ public class PinDown : ActiveAbility
 
 
     private static GameObject missileLinePrefab;
-    public static void InflictionCosmetic(Entity entity, int coreFaction = 0)
+    public static void InflictionCosmetic(Entity entity, int coreFaction = 0, bool destroy = true)
     {
         if (!missileLinePrefab)
         {
             missileLinePrefab = new GameObject("Missile Line"); // create prefab and set to parent
             LineRenderer lineRenderer = missileLinePrefab.AddComponent<LineRenderer>(); // add line renderer
+            lineRenderer.useWorldSpace = false;
             lineRenderer.material = ResourceManager.GetAsset<Material>("white_material"); // get material
             MissileAnimationScript comp = missileLinePrefab.AddComponent<MissileAnimationScript>(); // add the animation script
         }
 
         var missileColor = new Color(0.8F, 1F, 1F, 0.9F);
 
-        foreach (var part in entity.GetComponentsInChildren<ShellPart>())
+        if (entity.pinDownCosmetic != null)
         {
-            var x = Instantiate(missileLinePrefab, part.transform); // instantiate
-            x.GetComponent<MissileAnimationScript>().Initialize(); // initialize
-            x.GetComponent<MissileAnimationScript>().lineColor = missileColor;
-            Destroy(x, PINDOWN_ACTIVE_DURATION);
+            entity.StopPinDownCosmetic();
+        }
+        entity.pinDownCosmetic = PindownCoroutine(missileColor, destroy, entity);
+        if (entity && entity.pinDownCosmetic != null) entity.StartCoroutine(entity.pinDownCosmetic);
+        return;
+    }
+
+    static IEnumerator PindownCoroutine(Color missileColor, bool destroy, Entity entity)
+    {
+        float time = 0;
+        while (time < PINDOWN_ACTIVE_DURATION || !destroy)
+        {
+            foreach (var part in entity.GetComponentsInChildren<ShellPart>())
+            {
+                if (!part || !part.GetComponent<SpriteRenderer>() ) continue;
+                var rend = part.GetComponent<SpriteRenderer>();
+                if (!rend.sprite) continue;
+                var localPosition = new Vector2();
+                var extents = rend.sprite.bounds.extents;
+                localPosition.x = Random.Range(-extents.x, extents.x);
+                localPosition.y = Random.Range(-extents.y, extents.y);
+                var x = Instantiate(missileLinePrefab, part.transform); // instantiate
+                x.transform.localPosition = localPosition;
+                x.GetComponent<MissileAnimationScript>().Initialize(); // initialize
+                x.GetComponent<MissileAnimationScript>().lineColor = missileColor;
+                Destroy(x, 0.3F);
+            }
+            time += 0.25F;
+            yield return new WaitForSeconds(0.25F);
         }
     }
+
+
     /// <summary>
     /// Immobilizes a nearby enemy
     /// </summary>
@@ -99,7 +128,7 @@ public class PinDown : ActiveAbility
         if (target != null)
         {
             target.AddPin();
-            InflictionCosmetic(target, Core.faction);
+            InflictionCosmetic(target, Core.faction.factionID);
             if (target.networkAdapter) target.networkAdapter.InflictionCosmeticClientRpc((int)AbilityID.PinDown);
         }
 

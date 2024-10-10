@@ -65,7 +65,7 @@ public class PlayerViewScript : MonoBehaviour
             }
         }
 
-        if (InputManager.GetKeyUp(KeyName.Exit))
+        if (InputManager.GetKeyUp(KeyName.Exit) && (!RollCredits.instance || !RollCredits.instance.init))
         {
             // for some reason this is escape
             while (currentWindow.Count > 0)
@@ -78,9 +78,7 @@ public class PlayerViewScript : MonoBehaviour
                 // if the escape menu is on, untoggle it and prevent the same escape from cancelling something else
                 if (escapeMenu && escapeMenu.activeSelf && !transform.Find("Settings").gameObject.activeSelf)
                 {
-                    Time.timeScale = 1;
-                    AudioListener.pause = false;
-                    escapeMenu.SetActive(false);
+                    escapeMenu.GetComponent<EscapeMenu>().Close();
                     return;
                 }
 
@@ -90,10 +88,7 @@ public class PlayerViewScript : MonoBehaviour
                 {
                     var window = currentWindow.Pop();
                     window.CloseUI();
-                    if (window.GetOnCancelled() != null)
-                    {
-                        window.GetOnCancelled().Invoke();
-                    }
+                    window.GetOnCancelled()?.Invoke();
 
                     return; // prevents the escape menu code from running
                 }

@@ -1,5 +1,7 @@
 ﻿using UnityEngine;
 using UnityEngine.SceneManagement;
+using static CoreScriptsManager;
+using static CoreScriptsSequence;
 
 [RequireComponent(typeof(SpriteRenderer))]
 public class Flag : MonoBehaviour, IInteractable
@@ -7,6 +9,8 @@ public class Flag : MonoBehaviour, IInteractable
     public FlagInteractibility interactibility;
     public string sectorName;
     public string entityID;
+    public Sequence sequence;
+    public Context context;
     public delegate void EntityRangeCheckDelegate(float range);
     public EntityRangeCheckDelegate RangeCheckDelegate;
 
@@ -18,7 +22,7 @@ public class Flag : MonoBehaviour, IInteractable
         }
     }
 
-    public static void FindEntityAndWarpPlayer(string sectorName, string entityID)
+    public static void FindEntityAndWarpPlayer(string sectorName, string entityID, bool alsoCheckFlagName = false)
     {
         // need player to warp
         if (!PlayerCore.Instance)
@@ -35,6 +39,7 @@ public class Flag : MonoBehaviour, IInteractable
         }
         else
         {
+            Debug.Log($"<Flag> Sector Name: {sector.sectorName}");
             var dimensionChanged = PlayerCore.Instance.Dimension != sector.dimension;
             PlayerCore.Instance.Dimension = sector.dimension;
 
@@ -57,14 +62,19 @@ public class Flag : MonoBehaviour, IInteractable
             }
         }
 
+        bool found = false;
+
         foreach (var ent in sector.entities)
         {
-            if (ent.ID == entityID)
+            if (ent.ID == entityID || (alsoCheckFlagName && ent.assetID == "flag" && ent.name == entityID))
             {
                 // position is a global vector (i.e., not local to the sector itself), so this should work
                 PlayerCore.Instance.Warp(ent.position);
+                found = true;
+                break;
             }
         }
+        if (!found) Debug.LogWarning($"<Flag> Cannot find specified entityID: {entityID}");
     }
 
     public void Interact()
@@ -73,6 +83,9 @@ public class Flag : MonoBehaviour, IInteractable
         {
             case FlagInteractibility.Warp:
                 FindEntityAndWarpPlayer(sectorName, entityID);
+                break;
+            case FlagInteractibility.Sequence:
+                CoreScriptsSequence.RunSequence(sequence, context);
                 break;
         }
     }
@@ -102,6 +115,7 @@ public class Flag : MonoBehaviour, IInteractable
         {
             AIData.flags.Remove(this);
             AIData.interactables.Remove(this);
+            ProximityInteractScript.RemoveFlagText(this);
         }
     }
 

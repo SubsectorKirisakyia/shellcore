@@ -1,33 +1,15 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 
 public class TaskDisplayScript : MonoBehaviour
 {
     static TaskDisplayScript instance;
-
-    public static Dictionary<string, int> rankNumberByString = new Dictionary<string, int>()
-    {
-        ["C"] = 0,
-        ["B"] = 1,
-        ["A"] = 2,
-        ["S"] = 3,
-        ["X"] = 4
-    };
-
-    public static Dictionary<string, Color> rankColorsByString = new Dictionary<string, Color>()
-    {
-        ["C"] = Color.cyan,
-        ["B"] = Color.yellow,
-        ["A"] = Color.red + Color.green / 2,
-        ["S"] = Color.magenta,
-        ["X"] = Color.red
-    };
-
     public GameObject missionButtonPrefab;
     public GameObject missionObjectivePrefab;
     public Transform[] rankTexts;
-    public Transform[] missionListContents;
+    public Transform missionListContents;
     public Transform missionObjectivesContents;
 
     void OnEnable()
@@ -39,12 +21,9 @@ public class TaskDisplayScript : MonoBehaviour
     public static void Initialize()
     {
         instance.rankHeader.transform.parent.gameObject.SetActive(false);
-        foreach (var content in instance.missionListContents)
+        for (int i = 0; i < instance.missionListContents.childCount; i++)
         {
-            for (int i = 0; i < content.childCount; i++)
-            {
-                Destroy(content.GetChild(i).gameObject);
-            }
+            Destroy(instance.missionListContents.GetChild(i).gameObject);
         }
 
         instance.ClearMissionObjectivesSpace();
@@ -53,33 +32,66 @@ public class TaskDisplayScript : MonoBehaviour
         {
             AddMission(mission);
         }
-
-        for (int i = 0; i < instance.missionListContents.Length; i++)
-        {
-            instance.rankTexts[i].gameObject.SetActive(instance.missionListContents[i].childCount != 0);
-        }
     }
 
     public static bool EditMode;
     public static List<Mission> loadedMissions = new List<Mission>();
 
+    public static Mission.MissionStatus GetMissionStatus(string missionName)
+    {
+        Mission m = null;
+        var lmap = CoreScriptsManager.instance.GetLocalMapString(missionName);
+        if (PlayerCore.Instance.cursave.missions.Exists(mi => mi.name == missionName))
+        {
+            m = PlayerCore.Instance.cursave.missions.Find(mi => mi.name == missionName);
+        }
+        else if (PlayerCore.Instance.cursave.missions.Exists(mi => mi.name == lmap))
+        {
+            m = PlayerCore.Instance.cursave.missions.Find(mi => mi.name == lmap);
+        }
+        else return Mission.MissionStatus.Inactive;
+        return m.status;
+    }
+
+    public static Mission GetMission(string missionName)
+    {
+        Mission m = null;
+        var lmap = CoreScriptsManager.instance.GetLocalMapString(missionName);
+        if (PlayerCore.Instance.cursave.missions.Exists(mi => mi.name == missionName))
+        {
+            m = PlayerCore.Instance.cursave.missions.Find(mi => mi.name == missionName);
+        }
+        else if (PlayerCore.Instance.cursave.missions.Exists(mi => mi.name == lmap))
+        {
+            m = PlayerCore.Instance.cursave.missions.Find(mi => mi.name == lmap);
+        }
+        return m;
+    }
+
     public static void AddMission(Mission mission)
     {
         loadedMissions.Add(mission);
-        if (mission.status == Mission.MissionStatus.Inactive && mission.prerequisites.TrueForAll(
+        Func<string, bool> missionDoesNotExist = (missionName) => !PlayerCore.Instance.cursave.missions.Exists(mi => mi.name == missionName);
+        Func<string, bool> incompleteMissionLambda = (missionName) => PlayerCore.Instance.cursave.missions.Exists(mi => mi.name == missionName) &&
+                PlayerCore.Instance.cursave.missions.Find(mi => mi.name == missionName).status != Mission.MissionStatus.Complete;
+
+        if (mission.status == Mission.MissionStatus.Inactive && mission.prerequisites.Count > 0 && mission.prerequisites.TrueForAll(
             m => 
-                !PlayerCore.Instance.cursave.missions.Exists(mi => mi.name == m) ||
-                PlayerCore.Instance.cursave.missions.Find(mi => mi.name == m).status != Mission.MissionStatus.Complete
+            {
+                return (missionDoesNotExist(m) && missionDoesNotExist(CoreScriptsManager.instance.GetLocalMapString(m)))
+                    || incompleteMissionLambda(m) || incompleteMissionLambda(CoreScriptsManager.instance.GetLocalMapString(m));
+            }
             )) return;
         var button = Instantiate(instance.missionButtonPrefab,
-            instance.missionListContents[rankNumberByString[mission.rank]]).GetComponent<Button>();
+            instance.missionListContents).GetComponent<Button>();
+        var str = mission.useLocalMap ? CoreScriptsManager.instance.GetLocalMapString(mission.name) :  mission.name;
         if (mission.name.Length <= 33)
         {
-            button.GetComponentInChildren<Text>().text = mission.name;
+            button.GetComponentInChildren<Text>().text = str;
         }
         else
         {
-            button.GetComponentInChildren<Text>().text = mission.name.Substring(0, 30) + "...";
+            button.GetComponentInChildren<Text>().text = str.Substring(0, 30) + "...";
         }
 
         switch (mission.status)
@@ -109,6 +121,15 @@ public class TaskDisplayScript : MonoBehaviour
                 {
                     NodeEditorFramework.Standard.MissionCondition.OnMissionStatusChange.Invoke(mission);
                 }
+                if (CoreScriptsManager.OnVariableUpdate != null)
+                {
+                    CoreScriptsManager.OnVariableUpdate.Invoke("MissionStatus(");
+                }
+            }
+
+            if (Input.GetKey(KeyCode.LeftControl) && EditMode)
+            {
+                PlayerCore.Instance.cursave.missions.Remove(mission);
             }
         }));
     }
@@ -118,22 +139,34 @@ public class TaskDisplayScript : MonoBehaviour
 
     public static void ShowMission(Mission mission)
     {
+        if (mission == null) return;
         instance.ClearMissionObjectivesSpace();
-        instance.nameAndPrerequisitesHeader.text = $"{mission.name}\n\nEntrypoint:\n{mission.entryPoint}\n\nPrerequisites:";
-        instance.rankHeader.text = mission.rank;
+        var name = mission.useLocalMap ? CoreScriptsManager.instance.GetLocalMapString(mission.name) : mission.name;
+        var entryPoint = mission.useLocalMap ? CoreScriptsManager.instance.GetLocalMapString(mission.entryPoint) : mission.entryPoint;
+        instance.nameAndPrerequisitesHeader.text = $"{name}\n\nEntrypoint:\n{entryPoint}\n\nPrerequisites:";
         instance.rankHeader.transform.parent.gameObject.SetActive(true);
-        instance.rankHeader.color = rankColorsByString[mission.rank];
         foreach (var prereq in mission.prerequisites)
         {
-            instance.nameAndPrerequisitesHeader.text += $"\n{prereq}";
+            var prMission = PlayerCore.Instance.cursave.missions.Find((x) => { return x.name == prereq || (x.name == CoreScriptsManager.instance.GetLocalMapString(prereq)); });
+            if (prMission == null) continue;
+            var prName = prMission.useLocalMap ? CoreScriptsManager.instance.GetLocalMapString(prMission.name) : prMission.name;
+            instance.nameAndPrerequisitesHeader.text += $"\n{(prName)}";
         }
 
         foreach (var task in mission.tasks)
         {
             var obj = Instantiate(instance.missionObjectivePrefab, instance.missionObjectivesContents, false);
             var strings = obj.GetComponentsInChildren<Text>();
-            strings[0].text = task.dialogue;
-            strings[1].text = task.objectived;
+            if (task.useLocalMap)
+            {
+                strings[0].text = CoreScriptsManager.instance.GetLocalMapString(task.dialogue);
+                strings[1].text = CoreScriptsManager.instance.GetLocalMapString(task.objectived);
+            }
+            else
+            {
+                strings[0].text = task.dialogue;
+                strings[1].text = task.objectived;
+            }
             strings[0].color = task.dialogueColor;
 
             if (task != mission.tasks[mission.tasks.Count - 1] || mission.status == Mission.MissionStatus.Complete)

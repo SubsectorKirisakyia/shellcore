@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.UI;
+using System.Linq;
 
 public class DevConsoleScript : MonoBehaviour
 {
@@ -29,7 +30,10 @@ public class DevConsoleScript : MonoBehaviour
     public static DevConsoleScript Instance;
     public static bool bugTrackPartDebug = false;
     public static bool bugTrackTankDebug = false;
-
+#if UNITY_EDITOR
+#else
+    private static bool cheatBackup = false;
+#endif
     void OnEnable()
     {
         Application.logMessageReceived += HandleLog;
@@ -39,6 +43,10 @@ public class DevConsoleScript : MonoBehaviour
         PartIndexScript.partsObtainedCheat = false;
         Instance = this;
         componentEnabled = false;
+#if UNITY_EDITOR
+#else
+        cheatBackup = false;
+#endif
     }
 
     void Disable()
@@ -123,9 +131,15 @@ public class DevConsoleScript : MonoBehaviour
 
     public void EnterCommand(string command)
     {
+        EnterCommand(command, false);
+    }
+
+    public void EnterCommand(string command, bool coreScript)
+    {
         inputField.text = "";
         inputField.ActivateInputField();
 
+        bool doNotAttemptBackup = false;
         if (UnityEngine.SceneManagement.SceneManager.GetActiveScene().name == "SampleScene")//&& MasterNetworkAdapter.mode == MasterNetworkAdapter.NetworkMode.Off)
         {
             if (command.Equals("poor", StringComparison.CurrentCultureIgnoreCase))
@@ -193,6 +207,22 @@ public class DevConsoleScript : MonoBehaviour
                 int number = int.Parse(command.Substring(11).Trim());
                 PlayerCore.Instance.cursave.shards += number;
                 textBox.text += "\n<color=lime>I forgot about the shards.</color>";
+                ShardCountScript.DisplayCount();
+            }
+            else if (command.StartsWith("Add gas ", StringComparison.CurrentCultureIgnoreCase))
+            {
+                int number = int.Parse(command.Substring(8).Trim());
+                PlayerCore.Instance.cursave.gas += number;
+                textBox.text += "\n<color=lime>All gassed up.</color>";
+                ShardCountScript.DisplayCount();
+            }
+            else if (command.StartsWith("Add fe ", StringComparison.CurrentCultureIgnoreCase))
+            {
+                int number = int.Parse(command.Substring(7).Trim());
+                PlayerCore.Instance.cursave.fusionEnergy += number;
+                textBox.text += "\n<color=lime>Fu-sion ha.</color>";
+                ShardCountScript.DisplayCount();
+
             }
             else if (command.StartsWith("Add money ", StringComparison.CurrentCultureIgnoreCase))
             {
@@ -284,7 +314,7 @@ public class DevConsoleScript : MonoBehaviour
                 var info = new EntityBlueprint.PartInfo();
                 if (splits.Length < 2)
                 {
-                    textBox.text += "\nUsage: addpart a=<abilityID> t=<tier> c=<count> s=<secondaryData> p=<partID>";
+                    textBox.text += "\nUsage: addpart a=<abilityID> t=<tier> c=<count> s=<secondaryData> p=<partID> sh=<true/false>";
                 }
                 foreach(var split in splits)
                 {
@@ -298,6 +328,10 @@ public class DevConsoleScript : MonoBehaviour
                         info.secondaryData = split.Split("=")[1];
                     if (split.StartsWith("p="))
                         info.partID = split.Split("=")[1];
+                    if (split.StartsWith("sh="))
+                    {
+                        info.shiny = split.Split("=")[1] == "true";
+                    }
 
                 }
                      
@@ -335,6 +369,10 @@ public class DevConsoleScript : MonoBehaviour
                 updateLog = true;
                 textBox.text += "\n<color=lime>You're probably not gonna be able to see this.</color>";
             }
+            else if (command.Equals("savepath", StringComparison.CurrentCultureIgnoreCase))
+            {
+                textBox.text += $"\n{Application.persistentDataPath}";
+            }
             else if (command.Equals("killp", StringComparison.CurrentCultureIgnoreCase))
             {
                 foreach (ShellCore partyMember in PartyManager.instance.partyMembers)
@@ -358,13 +396,17 @@ public class DevConsoleScript : MonoBehaviour
             else if (command.StartsWith("addp ", StringComparison.CurrentCultureIgnoreCase))
             {
                 string entityID = command.Substring(5).Trim();
-                if (!PlayerCore.Instance.cursave.unlockedPartyIDs.Contains(entityID))
-                {
-                    PlayerCore.Instance.cursave.unlockedPartyIDs.Add(entityID);
-                }
 
-                PartyManager.instance.AssignBackend(entityID);
-                textBox.text += $"\n<color=lime>{entityID}</color>";
+                if (SectorManager.instance.characters.ToList().Exists(e => e.ID == entityID))
+                {
+                    if (!PlayerCore.Instance.cursave.unlockedPartyIDs.Contains(entityID))
+                    {
+                        PlayerCore.Instance.cursave.unlockedPartyIDs.Add(entityID);
+                    }
+
+                    PartyManager.instance.AssignBackend(entityID);
+                    textBox.text += $"\n<color=lime>{entityID}</color>";
+                }
             }
             else if (command.Equals("Damacy", StringComparison.CurrentCultureIgnoreCase))
             {
@@ -423,14 +465,16 @@ public class DevConsoleScript : MonoBehaviour
             }
             else if (command.Equals("Win siege", StringComparison.CurrentCultureIgnoreCase))
             {
-                if (NodeEditorFramework.Standard.WinSiegeCondition.OnSiegeWin != null)
-                    NodeEditorFramework.Standard.WinSiegeCondition.OnSiegeWin.Invoke(SectorManager.instance.current.sectorName);
+                if (SectorManager.instance) SectorManager.instance.WinSiege();
+                if (CoreScriptsManager.OnSiegeWin != null)
+                    CoreScriptsManager.OnSiegeWin.Invoke(SectorManager.instance.current.sectorName);
                 textBox.text += "\n<color=lime>Should have tested it...</color>";
             }
             else if (command.Equals("Win bz", StringComparison.CurrentCultureIgnoreCase))
             {
-                if (NodeEditorFramework.Standard.WinBattleCondition.OnBattleWin != null)
-                    NodeEditorFramework.Standard.WinBattleCondition.OnBattleWin.Invoke(SectorManager.instance.current.sectorName);
+                if (SectorManager.instance) SectorManager.instance.WinBZ();
+                if (CoreScriptsManager.OnBattleWin != null)
+                    CoreScriptsManager.OnBattleWin.Invoke(SectorManager.instance.current.sectorName);
                 textBox.text += "\n<color=lime>The war is over.</color>";
             }
             else if (command.Equals("No limits", StringComparison.CurrentCultureIgnoreCase))
@@ -480,6 +524,13 @@ public class DevConsoleScript : MonoBehaviour
                         break;
                 }
             }
+            else if (command.StartsWith("scriptrestart", StringComparison.CurrentCultureIgnoreCase))
+            {
+                textBox.text += "\n<color=lime>Rereading CoreScripts...</color>";
+                CoreScriptsManager.instance.Reinitialize();
+
+
+            }
             else if (command.StartsWith("test ", StringComparison.CurrentCultureIgnoreCase))
             {
                 string blueprint = command.Substring(5).Trim();
@@ -497,6 +548,19 @@ public class DevConsoleScript : MonoBehaviour
                         break;
                 }
             }
+            else doNotAttemptBackup = true;
+            doNotAttemptBackup |= coreScript;
+
+
+#if UNITY_EDITOR
+#else
+            if (!doNotAttemptBackup && !cheatBackup)
+            {
+                Debug.LogWarning("Backing up...");
+                cheatBackup = true;
+                SaveHandler.instance.BackupSave(" (cheat)");
+            }
+#endif
         }
         else if (UnityEngine.SceneManagement.SceneManager.GetActiveScene().name == "MainMenu")
         {
@@ -522,6 +586,11 @@ public class DevConsoleScript : MonoBehaviour
     public void SetActive()
     {
         if (!textBox.enabled) ToggleActive();
+    }
+
+    public void SetInactive()
+    {
+        if (textBox.enabled) ToggleActive();
     }
 
     public void ToggleActive()

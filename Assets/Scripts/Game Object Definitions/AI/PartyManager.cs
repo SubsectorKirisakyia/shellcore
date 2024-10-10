@@ -3,6 +3,7 @@ using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.UI;
 using System.Linq;
+using System.Collections;
 
 public class PartyManager : MonoBehaviour
 {
@@ -158,6 +159,7 @@ public class PartyManager : MonoBehaviour
     {
         if (partyMembers.Count >= 2)
         {
+            Debug.Log($"<Party Management> Adding Character ID {charID} would go above member cap");
             PlayerCore.Instance.alerter.showMessage("Cannot assign more than 2 party members!", "clip_alert");
             return;
         }
@@ -189,12 +191,22 @@ public class PartyManager : MonoBehaviour
         }
 
         var core = AIData.entities.Find(x => x.ID == charID) as ShellCore;
-        if (!core) return;
-        if (partyMembers.Contains(core))
+        if (!core)
+        {
+            Debug.LogWarning($"<Party Management> Character ID {charID} not found");
             return;
+        } 
+        if (partyMembers.Contains(core))
+        {
+
+            Debug.LogWarning($"<Party Management> Character {charID} already in party: Array count {partyMembers.Count}");
+            return;
+        }
 
         PlayerCore.Instance.alerter.showMessage("PARTY MEMBER ASSIGNED", "clip_victory");
+        core.faction.overrideFaction = PlayerCore.Instance.faction.overrideFaction;
         partyMembers.Add(core);
+        Debug.Log($"<Party Management> Character {charID} added");
         if (!partyIndicators.ContainsKey(core))
             partyIndicators.Add(core, Instantiate(partyIndicatorPrefab, indicatorTransform));
         partyIndicators[core].GetComponentInChildren<Text>().text = core.name.ToUpper();
@@ -214,6 +226,13 @@ public class PartyManager : MonoBehaviour
         UpdatePortraits();
     }
 
+    public void SetOverrideFaction(int overrideFac)
+    {
+        foreach (var core in partyMembers)
+        {
+            core.SetOverrideFaction(overrideFac);
+        }
+    }
 
     public void UnassignBackend(string charID, ShellCore member)
     {
@@ -235,20 +254,13 @@ public class PartyManager : MonoBehaviour
     public GameObject partyIndicatorPrefab;
     public Dictionary<ShellCore, GameObject> partyIndicators = new Dictionary<ShellCore, GameObject>();
     public Transform indicatorTransform;
+    public List<string> optionNames = new List<string>();
+
 
     private void AddOption(string name, UnityAction action)
     {
-        var text = Instantiate(textPrefab, wheel.transform).GetComponent<Text>();
-        text.text = name;
-        texts.Add(text);
         options.Add(action);
-
-
-        for (int i = 0; i < texts.Count; i++)
-        {
-            float angle = Mathf.Deg2Rad * i * 360f / texts.Count;
-            texts[i].GetComponent<RectTransform>().anchoredPosition = new Vector2(250 * Mathf.Sin(angle), 250 * Mathf.Cos(angle));
-        }
+        optionNames.Add(name);
     }
 
     bool initialized = false;
@@ -257,6 +269,7 @@ public class PartyManager : MonoBehaviour
 
     void Start()
     {
+        optionNames.Clear();
         AddOption("Attack Enemy", OrderAttack);
         AddOption("Defend Stations", OrderDefendStation);
         AddOption("Collect Power", OrderCollection);
@@ -340,19 +353,14 @@ public class PartyManager : MonoBehaviour
     private int index = -1;
     private float partyMemberTeleportThreshold = 2500;
 
+    public Text wheelText;
     void Update()
     {
         blocker.SetActive(false);
         partyMembers.RemoveAll(sc => !sc);
 
-        var deadMembers = partyMembers.FindAll(sc => !sc);
-        foreach (var member in deadMembers)
-        {
-            UnassignBackend(null, member);
-        }
-
         // distance maximum for party members - teleport them close to the player
-        if (SectorManager.instance?.current?.type != Sector.SectorType.BattleZone && !DialogueSystem.isInCutscene)
+        if (SectorManager.instance.GetCurrentType() != Sector.SectorType.BattleZone && !DialogueSystem.isInCutscene)
         {
             foreach (var member in partyMembers)
             {
@@ -371,9 +379,17 @@ public class PartyManager : MonoBehaviour
         }
 
 
-        if (InputManager.GetKey(KeyName.CommandWheel) && !DialogueSystem.isInCutscene && partyMembers.Count > 0 && partyMembers.TrueForAll((member) => { return member; }))
+        if (InputManager.GetKey(KeyName.CommandWheel) && 
+        Time.timeScale > 0 &&
+        !DialogueSystem.isInCutscene && 
+        partyMembers.Count > 0 && 
+        partyMembers.TrueForAll((member) => { return member; }))
         {
-            wheel.SetActive(true);
+            if (showCoroutine == null)
+            {
+                showCoroutine = StartCoroutine(BeginShow());
+            }
+
             arrow.rotation = Quaternion.Euler(0, 0, Mathf.Atan2((Input.mousePosition.y - Camera.main.pixelHeight / 2),
                 (Input.mousePosition.x - Camera.main.pixelWidth / 2)) * Mathf.Rad2Deg);
             var x = 90 - arrow.rotation.eulerAngles.z;
@@ -387,6 +403,7 @@ public class PartyManager : MonoBehaviour
             }
 
             index = Mathf.RoundToInt((x) / (360 / options.Count));
+            wheelText.text = optionNames[index % optionNames.Count];
         }
         else if (initialized)
         {
@@ -403,8 +420,10 @@ public class PartyManager : MonoBehaviour
 
                 index = -1;
             }
-
-            wheel.SetActive(false);
+            if (hideCoroutine == null)
+            {
+                hideCoroutine = StartCoroutine(BeginHide());
+            }
         }
 
         foreach (var kvp in partyIndicators)
@@ -422,6 +441,55 @@ public class PartyManager : MonoBehaviour
             }
         }
     }
+
+    public Coroutine showCoroutine;
+    public Coroutine hideCoroutine;
+    public IEnumerator BeginShow()
+    {
+        if (hideCoroutine != null)
+        {
+            StopCoroutine(hideCoroutine);
+            hideCoroutine = null;
+        }
+
+        wheel.SetActive(true);
+        wheel.transform.localScale = new Vector3(0.5F, 0.5F, 1);
+        while (wheel.transform.localScale.x < 1)
+        {
+            var scale = wheel.transform.localScale;
+            scale.x = Mathf.Min(scale.x + 0.1F, 1);
+            scale.y = Mathf.Min(scale.y + 0.1F, 1);
+            wheel.transform.localScale = scale;
+            yield return new WaitForSeconds(0.001F);
+        }
+
+        wheel.transform.localScale = Vector3.one;
+        yield return null;
+    }
+
+    public IEnumerator BeginHide()
+    {
+        if (showCoroutine != null)
+        {
+            StopCoroutine(showCoroutine);
+            showCoroutine = null;
+        }
+        wheel.transform.localScale = new Vector3(0.5F, 0.5F, 1);
+
+        while (wheel.transform.localScale.x > 0F)
+        {
+            var scale = wheel.transform.localScale;
+            scale.x = Mathf.Max(scale.x - 0.1F, 0);
+            scale.y = Mathf.Max(scale.y - 0.1F, 0);
+            wheel.transform.localScale = scale;
+            yield return new WaitForSeconds(0.001F);
+        }
+
+        wheel.transform.localScale = Vector3.zero;
+        wheel.SetActive(false);
+        yield return null;
+    }
+
 
     public Transform[] portraits;
 

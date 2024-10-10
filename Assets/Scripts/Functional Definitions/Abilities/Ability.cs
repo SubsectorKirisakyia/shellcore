@@ -46,6 +46,7 @@ public abstract class Ability : MonoBehaviour
     protected int abilityTier;
     protected string description = "Does things";
     protected ShellPart part;
+    public bool gasBoosted;
 
     public ShellPart Part
     {
@@ -129,6 +130,7 @@ public abstract class Ability : MonoBehaviour
                 Deactivate();
             }
 
+            gasBoosted = false;
             State = AbilityState.Destroyed;
         }
         else
@@ -195,7 +197,8 @@ public abstract class Ability : MonoBehaviour
     /// <returns>The cooldown of the ability</returns>
     public float GetCDDuration()
     {
-        return cooldownDuration; // cooldown duration
+        var trueCD = cooldownDuration;
+        return trueCD; // cooldown duration
     }
 
     /// <summary>
@@ -213,6 +216,7 @@ public abstract class Ability : MonoBehaviour
         charging = false;
     }
 
+    private float gasBoostedTime = 0;
     /// <summary>
     /// Get the cooldown remaining on the ability
     /// </summary>
@@ -221,11 +225,19 @@ public abstract class Ability : MonoBehaviour
     {
         if (State == AbilityState.Cooldown || State == AbilityState.Charging || State == AbilityState.Active || (this is WeaponAbility && State == AbilityState.Disabled)) // active or on cooldown
         {
-            return Mathf.Max(cooldownDuration - (Time.time - startTime), 0); // return the cooldown remaining, calculated prior to this call via TickDown
+            return Mathf.Max(GetCDDuration() - (Time.time - startTime) - gasBoostedTime, 0); // return the cooldown remaining, calculated prior to this call via TickDown
         }
         else
         {
             return 0; // not on cooldown
+        }
+    }
+
+    public void GasBoostCheck()
+    {
+        if (gasBoosted && cooldownDuration > 0 && AbilityUtilities.AbilityIsStandardGasBoostable((int)ID)) 
+        {
+            gasBoostedTime += 0.25F * Time.deltaTime;
         }
     }
 
@@ -244,13 +256,16 @@ public abstract class Ability : MonoBehaviour
             charging = false;
             State = AbilityState.Disabled;
         }
-        else if (Time.time >= startTime + cooldownDuration && (!MasterNetworkAdapter.lettingServerDecide || abilityIsReadyOnServer || Time.time >= startTime + cooldownDuration + 0.5F))
+        else if (Time.time >= startTime + GetCDDuration() - gasBoostedTime
+            && (!MasterNetworkAdapter.lettingServerDecide || abilityIsReadyOnServer || Time.time >= startTime + GetCDDuration() - gasBoostedTime + 0.5F))
         {
             charging = false;
             if (!MasterNetworkAdapter.lettingServerDecide && State != AbilityState.Ready && Core && Core.networkAdapter && Core.networkAdapter.isPlayer.Value)
             {
                 Core.networkAdapter.SetAbilityReadyClientRpc(part ? part.info.location : Vector2.zero);
             }
+            startTime -= gasBoostedTime; // gasBoostedTime gets set to 0 when it's no longer needed. This way we keep the ability ready.
+            gasBoostedTime = 0;
             State = AbilityState.Ready;
         }
         else if (Time.time >= startTime + activeDuration)
@@ -350,8 +365,9 @@ public abstract class Ability : MonoBehaviour
         }
 
         AbilityState prevState = State;
+        
         UpdateState();
-
+        GasBoostCheck();
         UpdateBlinker();
 
         // If ability activated
@@ -368,6 +384,7 @@ public abstract class Ability : MonoBehaviour
 
     private void AutoCastTick()
     {
+        if (DialogueSystem.isInCutscene) return;
         if (!(Core is PlayerCore playerCore) ||
             State != AbilityState.Ready ||
             playerCore.GetHealth()[2] < energyCost)
@@ -392,7 +409,7 @@ public abstract class Ability : MonoBehaviour
         else if (State == AbilityState.Active)
         {
             // Do not reveal stealth enemies by blinking their parts
-            if (ID == AbilityID.Stealth && (PlayerCore.Instance && PlayerCore.Instance.faction != core.faction))
+            if (ID == AbilityID.Stealth && (PlayerCore.Instance && PlayerCore.Instance.faction.factionID != core.faction.factionID))
             {
                 if (glow)
                 {
@@ -412,7 +429,7 @@ public abstract class Ability : MonoBehaviour
             if (Core.IsInvisible)
             {
                 // Invisible player
-                if (Core.faction == 0)
+                if (Core.faction.factionID == 0)
                 {
                     newColor.a = 0.1f;
                 }

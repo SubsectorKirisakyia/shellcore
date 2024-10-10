@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using UnityEngine;
+using static Entity;
 
 public class BattleZoneManager : MonoBehaviour
 {
@@ -10,6 +11,7 @@ public class BattleZoneManager : MonoBehaviour
 
     float startTime = 0f;
     public int CreditsCollected = 0;
+    public bool overrideMode;
 
     public class Stats
     {
@@ -38,12 +40,14 @@ public class BattleZoneManager : MonoBehaviour
         ShellCore.OnPowerCollected += OnPowerCollected;
         CreditsCollected = 0;
         startTime = Time.time;
+        overrideMode = false;
     }
 
     private void OnDisable()
     {
         Entity.OnEntityDeath -= OnEntityDeath;
         ShellCore.OnPowerCollected -= OnPowerCollected;
+        playing = false;
         ClearTargetsAndStats();
     }
 
@@ -54,13 +58,17 @@ public class BattleZoneManager : MonoBehaviour
         stats.Clear();
     }
 
+    public int GetStatsFaction(Entity ent)
+    {
+        return overrideMode ? ent.faction.overrideFaction : ent.faction.factionID;
+    }
 
     void OnEntityDeath(Entity killed, Entity killer)
     {
-        Stats killedStats = stats.Find((x) => { return x.faction == killed.faction; });
+        Stats killedStats = stats.Find((x) => x.faction == GetStatsFaction(killed) );
         if (killedStats == null)
         {
-            killedStats = new Stats(killed.faction);
+            killedStats = new Stats(GetStatsFaction(killed));
             stats.Add(killedStats);
         }
 
@@ -71,10 +79,10 @@ public class BattleZoneManager : MonoBehaviour
 
         if (killer != null)
         {
-            Stats killerStats = stats.Find(x => x.faction == killer.faction);
+            Stats killerStats = stats.Find(x =>  x.faction == GetStatsFaction(killer) );
             if (killerStats == null)
             {
-                killerStats = new Stats(killer.faction);
+                killerStats = new Stats(GetStatsFaction(killer));
                 stats.Add(killerStats);
             }
 
@@ -93,8 +101,9 @@ public class BattleZoneManager : MonoBehaviour
         }
     }
 
-    void OnPowerCollected(int faction, int amount)
+    void OnPowerCollected(Entity ent, int amount)
     {
+        int faction = GetStatsFaction(ent);
         Stats block = stats.Find((x) => { return x.faction == faction; });
         if (block == null)
         {
@@ -105,18 +114,32 @@ public class BattleZoneManager : MonoBehaviour
         block.power += amount;
     }
 
+    private string GetFactionHighlight(Stats statBlock)
+    {
+        if (overrideMode) return $"{(statBlock.faction == PlayerCore.Instance.faction.overrideFaction ? "PLAYER" : "ENEMY" )}";
+        return $"<color={FactionManager.GetFactionColorName(statBlock.faction)}>{(statBlock.faction == 0 ? "PLAYER" : "ENEMY")}</color>";
+    }
+
     public string[] GetStats()
     {
         string[] strings = new string[stats.Count];
 
-        stats.Sort((a, b) => { return a.faction < b.faction ? -1 : 1; });
+        stats.Sort((a, b) => {
+            if (overrideMode && a.faction == PlayerCore.Instance.faction.overrideFaction)
+                return -1;
+            if (overrideMode && b.faction == PlayerCore.Instance.faction.overrideFaction)
+                return 1;
+                    
+            return a.faction < b.faction ? -1 : 1; 
+        });
+
 
         int index = 0;
 
         foreach (var statBlock in stats)
         {
             string str =
-                $"<color={FactionManager.GetFactionColorName(statBlock.faction)}>{(statBlock.faction == 0 ? "PLAYER" : "ENEMY")}</color>\n\n"
+                $"{GetFactionHighlight(statBlock)}\n\n"
                 + statBlock.kills + "\n"
                 + statBlock.deaths + "\n"
                 + (statBlock.deaths > 0 ? (statBlock.kills / statBlock.deaths).ToString() : "-") + "\n\n"
@@ -137,15 +160,15 @@ public class BattleZoneManager : MonoBehaviour
         return strings;
     }
 
-    public void AttemptAlertPlayers(int faction, string message, string sound)
+    public void AttemptAlertPlayers(EntityFaction faction, string message, string sound)
     {
         if (MasterNetworkAdapter.mode != MasterNetworkAdapter.NetworkMode.Off)
         {
             if (MasterNetworkAdapter.lettingServerDecide) return;
-            MasterNetworkAdapter.instance.AlertPlayerClientRpc(faction, message, sound);
+            MasterNetworkAdapter.instance.AlertPlayerClientRpc(faction.factionID, message, sound);
         }
 
-        if (PlayerCore.Instance && PlayerCore.Instance.faction == faction) AlertPlayer(message, sound);
+        if (PlayerCore.Instance && FactionManager.IsAllied(faction, PlayerCore.Instance.faction)) AlertPlayer(message, sound);
     }
 
     public void AlertPlayer(string message, string sound)
@@ -167,15 +190,15 @@ public class BattleZoneManager : MonoBehaviour
     {
         foreach (var target in targets)
         {
-            if (!SectorManager.instance.carriers.ContainsKey(target.faction))
+            if (!SectorManager.instance.carriers.ContainsKey(GetStatsFaction(target)))
             {
                 continue;
             }
 
-            var carrier = SectorManager.instance.carriers[target.faction];
+            var carrier = SectorManager.instance.carriers[GetStatsFaction(target)];
             if (target is ShellCore shellCore && carrier != null && !carrier.Equals(null) && !carrier.GetIsDead())
             {
-                shellCore.SetCarrier(SectorManager.instance.carriers[target.faction]);
+                shellCore.SetCarrier(SectorManager.instance.carriers[GetStatsFaction(target)]);
             }
         }
     }
@@ -187,9 +210,9 @@ public class BattleZoneManager : MonoBehaviour
         // Create dictionary entries for counts of existing target entities of each faction
         for (int i = 0; i < targets.Count; i++)
         {
-            if (targets[i] && !targets[i].GetIsDead() && !livingFactions.Contains(targets[i].faction))
+            if (targets[i] && !targets[i].GetIsDead() && !livingFactions.Contains(GetStatsFaction(targets[i])))
             {
-                livingFactions.Add(targets[i].faction);
+                livingFactions.Add(GetStatsFaction(targets[i]));
             }
         }
         return livingFactions;
@@ -202,8 +225,10 @@ public class BattleZoneManager : MonoBehaviour
         {
             for (int j = 0; j < livingFactions.Count; j++)
             {
-                if (!FactionManager.IsAllied(livingFactions[i], livingFactions[j]) ||
-                    !FactionManager.IsAllied(livingFactions[j], livingFactions[i]))
+                var regularEnemies = !FactionManager.IsAllied(livingFactions[i], livingFactions[j]) ||
+                    !FactionManager.IsAllied(livingFactions[j], livingFactions[i]);
+                
+                if (regularEnemies || overrideMode)
                 {
                     allAllied = false;
                     break;
@@ -227,7 +252,7 @@ public class BattleZoneManager : MonoBehaviour
         {
             foreach (Entity playerEntity in targets)
             {
-                if (playerEntity && !playerEntity.GetIsDead() && livingFactions.Contains(playerEntity.faction) &&
+                if (playerEntity && !playerEntity.GetIsDead() && livingFactions.Contains(GetStatsFaction(playerEntity)) &&
                      playerEntity.networkAdapter && playerEntity.networkAdapter.isPlayer.Value)
                 {
                     HUDScript.AddScore(playerEntity.networkAdapter.playerName, 50);
@@ -239,17 +264,19 @@ public class BattleZoneManager : MonoBehaviour
         foreach (Entity playerEntity in targets)
         {
             if (!(playerEntity as PlayerCore)) continue;
-            if (livingFactions.Contains(playerEntity.faction))
+            if (livingFactions.Contains(GetStatsFaction(playerEntity)))
             {
                 AudioManager.PlayClipByID("clip_victory");
-                if (NodeEditorFramework.Standard.WinBattleCondition.OnBattleWin == null) continue;
-                NodeEditorFramework.Standard.WinBattleCondition.OnBattleWin.Invoke(sectorName);
+                if (CoreScriptsManager.OnBattleWin == null) continue;
+                CoreScriptsManager.OnBattleWin.Invoke(sectorName);
+                break;
             }
             else
             {
                 AudioManager.PlayClipByID("clip_fail");
-                if (NodeEditorFramework.Standard.WinBattleCondition.OnBattleLose == null) continue;
-                NodeEditorFramework.Standard.WinBattleCondition.OnBattleLose.Invoke(sectorName);
+                if (CoreScriptsManager.OnBattleLose == null) continue;
+                CoreScriptsManager.OnBattleLose.Invoke(sectorName);
+                break;
             }
         }
 
@@ -260,7 +287,7 @@ public class BattleZoneManager : MonoBehaviour
     {
         if (MasterNetworkAdapter.mode != MasterNetworkAdapter.NetworkMode.Server && DialogueSystem.Instance)
         {
-            DialogueSystem.ShowBattleResults(livingFactions.Contains(PlayerCore.Instance.faction));
+            DialogueSystem.ShowBattleResults(livingFactions.Contains(GetStatsFaction(PlayerCore.Instance)));
         }
         else if (MasterNetworkAdapter.mode != MasterNetworkAdapter.NetworkMode.Off && DialogueSystem.Instance)
         {
@@ -280,9 +307,7 @@ public class BattleZoneManager : MonoBehaviour
 
             if (SectorManager.instance == null || SectorManager.instance.carriers == null) return;
             if (targets == null) return;
-
             ResetCarriers();
-
             var livingFactions = GetLivingFactions();
 
             bool allAllied = GetAllFactionsAllied(livingFactions);
@@ -302,15 +327,17 @@ public class BattleZoneManager : MonoBehaviour
             targets = new List<Entity>();
         }
 
-        if (!playing)
+        if (target.faction.overrideFaction != 0)
         {
-            targets.Clear();
+            overrideMode = true;
         }
 
         if (target)
         {
             if (!opposingFactionAdded && targets.Exists(e => !FactionManager.IsAllied(e.GetFaction(), target.GetFaction())))
+            {
                 opposingFactionAdded = true;
+            }
             playing = true;
         }
 

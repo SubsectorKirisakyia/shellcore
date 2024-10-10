@@ -11,6 +11,7 @@
     {
         Category = EntityCategory.Station;
         base.Awake();
+        isStandardTractorTarget = true;
     }
 
     protected override void Start()

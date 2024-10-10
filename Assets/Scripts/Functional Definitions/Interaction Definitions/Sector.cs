@@ -29,6 +29,8 @@ public class Sector : ScriptableObject
         public string name;
         public string ID;
         public int faction;
+        [System.NonSerialized]
+        public int overrideFaction;
         public string assetID;
         public string blueprintJSON;
         public string dialogueID;
@@ -36,6 +38,8 @@ public class Sector : ScriptableObject
         public string pathID;
         public Vector2 position;
         public NodeEditorFramework.Standard.PathData patrolPath;
+        [System.NonSerialized]
+        public bool isStandardTractorTarget;
     }
 
     public enum SectorType
@@ -84,6 +88,7 @@ public class Sector : ScriptableObject
 
     public BackgroundSpawn[] backgroundSpawns;
     public string waveSetPath;
+    public int gasVortices;
     public RectangleEffectSkin rectangleEffectSkin;
     public BackgroundTileSkin backgroundTileSkin;
 

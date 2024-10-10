@@ -4,6 +4,7 @@ using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
 using System.Linq;
+using static TaskManager;
 
 public class MapMakerScript : MonoBehaviour, IPointerDownHandler, IPointerClickHandler, IPointerEnterHandler, IPointerExitHandler
 {
@@ -418,14 +419,30 @@ public class MapMakerScript : MonoBehaviour, IPointerDownHandler, IPointerClickH
         {
             foreach (var loc in ls)
             {
-                if (loc.dimension != PlayerCore.Instance.Dimension) return;
-                var arrow = Instantiate(instance.mapArrowPrefab, instance.transform, false);
-                arrow.GetComponent<Image>().color = Color.red + Color.green / 2;
-                instance.arrows.Add(loc, arrow.GetComponent<RectTransform>());
-                arrow.GetComponent<RectTransform>().anchoredPosition =
-                    new Vector2(loc.location.x - instance.minX, loc.location.y - instance.maxY) / instance.zoomoutFactor;
+                AddArrow(loc);
             }
         }
+
+        if (Radar.location != null)
+        {
+            AddArrow(Radar.location);
+        }
+
+        if (!CoreScriptsManager.instance) return;
+        foreach (var loc in CoreScriptsManager.instance.objectiveLocations.Values)
+        {
+            AddArrow(loc);
+        }
+    }
+
+    private static void AddArrow(ObjectiveLocation loc)
+    {
+        if (loc.dimension != PlayerCore.Instance.Dimension) return;
+        var arrow = Instantiate(instance.mapArrowPrefab, instance.transform, false);
+        arrow.GetComponent<Image>().color = loc.color;
+        instance.arrows.Add(loc, arrow.GetComponent<RectTransform>());
+        arrow.GetComponent<RectTransform>().anchoredPosition =
+            new Vector2(loc.location.x - instance.minX, loc.location.y - instance.maxY) / instance.zoomoutFactor;
     }
 
     public static void EnableMapCheat()
@@ -541,9 +558,11 @@ public class MapMakerScript : MonoBehaviour, IPointerDownHandler, IPointerClickH
                     var imgpos = img.rectTransform.position;
                     var imgsizeDelta = img.rectTransform.sizeDelta;
                     var imgnewRect = new Rect(imgpos.x - imgsizeDelta.x / 2, imgpos.y, imgsizeDelta.x, imgsizeDelta.y);
-                    if (imgnewRect.Contains(Input.mousePosition))
+                    if (imgnewRect.Contains(Input.mousePosition) && !string.IsNullOrEmpty(objective.missionName))
                     {
-                        text.text += $"\nCLICK TO VIEW MISSION: {objective.missionName.ToUpper()}";
+                        var missionName = CoreScriptsManager.instance.GetLocalMapString(objective.missionName);
+                        if (string.IsNullOrEmpty(missionName)) missionName = objective.missionName;
+                        text.text += $"\nCLICK TO VIEW MISSION: {missionName.ToUpper()}";
                         break;
                     }
                 }

@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using UnityEngine;
+using static Entity;
 
 public class FactionManager : MonoBehaviour
 {
@@ -85,18 +86,29 @@ public class FactionManager : MonoBehaviour
         return true;
     }
 
-    public static List<int> GetAllAlliedFactions(int faction)
+    public static List<EntityFaction> GetAllAlliedFactions(EntityFaction faction)
     {
-        var fac = new List<int>();
+        var fac = new List<EntityFaction>();
+        if (faction.overrideFaction != 0) return fac;
         if (!instance) return fac;
         foreach (var f in instance.factions)
         {
-            if (IsAllied(f.ID, faction))
-                fac.Add(f.ID);
+            if (IsAllied(f.ID, faction.factionID))
+            {
+                EntityFaction ef = new();
+                ef.factionID = f.ID;
+                fac.Add(ef);
+            }
         }
         return fac;
     }
 
+    public static int GetDistinguishingInteger(EntityFaction faction)
+    {
+        if (faction.overrideFaction != 0) return faction.overrideFaction;
+        if (PlayerCore.Instance && PlayerCore.Instance.faction.overrideFaction != 0) return faction.overrideFaction;
+        return faction.factionID;
+    }
     public static bool FactionExists(int faction)
     {
         if (faction < 0 || faction >= 32 || instance.factions.Length <= faction)
@@ -136,6 +148,15 @@ public class FactionManager : MonoBehaviour
     public static bool IsAllied(int faction1, int faction2)
     {
         return ((instance.factions[faction1].relations >> faction2) & 1) > 0;
+    }
+
+    public static bool IsAllied(EntityFaction faction1, EntityFaction faction2)
+    {
+        if (faction1.overrideFaction != 0)
+        {
+            return faction1.overrideFaction == faction2.overrideFaction;
+        }
+        return ((instance.factions[faction1.factionID].relations >> faction2.factionID) & 1) > 0;
     }
 
     public static int FactionArrayLength

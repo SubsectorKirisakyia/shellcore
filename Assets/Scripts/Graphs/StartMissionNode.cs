@@ -137,31 +137,36 @@ namespace NodeEditorFramework.Standard
 
         public void TryAddMission()
         {
-            if (PlayerCore.Instance.cursave.missions.TrueForAll((x) => { return x.name != missionName; }))
+            StartMissionNode.TryAddMission(missionName, rank, entryPoint, textColor, episode, prerequisites, Canvas);
+        }
+
+        public static void TryAddMission(string missionName, string rank, string entryPoint, Color textColor, int episode, List<string> prerequisites, NodeCanvas Canvas = null)
+        {
+            if (TaskDisplayScript.GetMission(missionName) == null)
             {
                 var mission = new Mission();
                 mission.name = missionName;
-                mission.rank = rank;
                 mission.status = Mission.MissionStatus.Inactive;
                 mission.tasks = new List<Task>();
                 mission.prerequisites = prerequisites;
                 mission.entryPoint = entryPoint;
                 mission.textColor = textColor;
                 mission.episode = episode;
+                mission.useLocalMap = !Canvas;
                 PlayerCore.Instance.cursave.missions.Add(mission);
             }
             else
             {
-                var mission = PlayerCore.Instance.cursave.missions.Find((x) => { return x.name == missionName; });
-                mission.rank = rank;
+                var mission = TaskDisplayScript.GetMission(missionName);
                 mission.prerequisites = prerequisites;
                 mission.entryPoint = entryPoint;
                 mission.textColor = textColor;
                 mission.episode = episode;
+                mission.useLocalMap = !Canvas;
             }
 
             // TODO: Prevent this from breaking the game by not allowing this node in dialogue canvases
-            (Canvas as QuestCanvas).missionName = missionName;
+            if (Canvas) (Canvas as QuestCanvas).missionName = missionName;
         }
     }
 }

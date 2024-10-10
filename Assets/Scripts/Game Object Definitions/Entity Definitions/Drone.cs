@@ -47,7 +47,7 @@ public class Drone : AirCraft, IOwnable
         // Drones are defensive for all carriers outside battlezones, or ground carriers anywhere
 
         // Attack enemy
-        if ((owner is AirCarrier || owner is AirWeaponStation) && SectorManager.instance?.current?.type == Sector.SectorType.BattleZone)
+        if ((owner is AirCarrier || owner is AirWeaponStation) && SectorManager.instance.GetCurrentType() == Sector.SectorType.BattleZone)
         {
             // Get valid targets
             List<Vector2> validTargets = new List<Vector2>();
@@ -137,6 +137,11 @@ public class Drone : AirCraft, IOwnable
     {
         return ai;
     }
+    protected override void Awake()
+    {
+        base.Awake();
+        isStandardTractorTarget = true;
+    }
 
     protected override void Start()
     {
@@ -191,7 +196,7 @@ public class Drone : AirCraft, IOwnable
     {
         if (Time.time > aiReenableTime && ai) ai.enabled = true;
         base.Update();
-        if (!draggable || !draggable.dragging)
+        if (!draggable || !draggable.Dragging)
         {
             if (lastMode.HasValue)
             {

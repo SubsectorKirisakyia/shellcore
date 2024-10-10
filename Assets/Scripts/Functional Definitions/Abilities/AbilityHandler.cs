@@ -153,6 +153,8 @@ public class AbilityHandler : MonoBehaviour
             }
         }
 
+        ReflectGasBoost();
+        
         var HUDbgrectTransform = HUDbg.GetComponent<RectTransform>();
         if (visibleAbilities.Count > 0)
         {
@@ -213,6 +215,15 @@ public class AbilityHandler : MonoBehaviour
         else
         {
             Rearrange();
+        }
+    }
+
+    public void ReflectGasBoost()
+    {
+
+        foreach (var val in betterBGboxArray.Values)
+        {
+            val.ReflectGasBoost();
         }
     }
 
@@ -374,6 +385,14 @@ public class AbilityHandler : MonoBehaviour
         {
             for (int i = 0; i < core.GetAbilities().Length; i++)
             {
+
+                if (abilities[i].gasBoosted)
+                {
+                    PlayerCore.Instance.cursave.gas -= Time.deltaTime * 0.25F;
+                    ShardCountScript.DisplayCount();
+                }
+
+
                 // update all abilities
                 if (abilities[i] == null || core.GetIsDead())
                 {

@@ -2,6 +2,7 @@
 using System.IO;
 using UnityEngine;
 using UnityEngine.UI;
+using System.Linq;
 
 public class SaveMenuHandler : GUIWindowScripts
 {
@@ -14,6 +15,7 @@ public class SaveMenuHandler : GUIWindowScripts
     List<Button> worldButtons;
     List<SaveMenuIcon> icons;
     public InputField inputField;
+    public Text inputFeedback;
     int indexToDelete;
     int indexToMigrate;
     public GUIWindowScripts deletePrompt;
@@ -37,7 +39,10 @@ public class SaveMenuHandler : GUIWindowScripts
         "Alpha 4.3.0",
         "Beta 0.0.0",
         "Beta 0.1.1",
-        "Beta 1.0.0"
+        "Beta 1.0.0",
+        "Beta 2.0.0",
+        "Beta 2.0.1",
+        "Beta 2.1.0"
     };
 
     public Sprite[] episodeSprites;
@@ -261,6 +266,10 @@ public class SaveMenuHandler : GUIWindowScripts
         indexToMigrate = index;
         switch (saves[index].version)
         {
+            case "Beta 2.1.0":
+                migratePrompt.transform.Find("Background").GetComponentInChildren<Text>().text = "This will remove old EP3 mission data and place you in the Spawning Grounds. "
+                                                                                                 + "Backup first! (Below save icon delete button)";
+                break;
             case "Beta 1.0.0":
                 migratePrompt.transform.Find("Background").GetComponentInChildren<Text>().text = "This will move your presets to the new dedicated folder the game uses. "
                                                                                                  + "Backup first! (Below save icon delete button)";
@@ -308,6 +317,31 @@ public class SaveMenuHandler : GUIWindowScripts
         var save = saves[indexToMigrate];
         switch (save.version)
         {
+            case "Beta 2.0.0":
+            case "Beta 2.0.1":
+            case "Beta 2.1.0":
+                var missionsNames = new string[] 
+                {
+                    "Abandonment", 
+                    "Awakening the Holy Citadel", 
+                    "Derelict Vanquish", 
+                    "Forsaken Declaration", 
+                    "Gunning Triumph",
+                    "The Stronghold",
+                    "Reclamation"
+                };
+                var missionsToRemove = save.missions.Where(m => missionsNames.Contains(m.name)).ToArray();
+                save.lastDimension = 0;
+                save.position = new Vector2(260, -145);
+                foreach (var m in missionsToRemove)
+                {
+                    save.missions.Remove(m);
+                }
+                File.WriteAllText(paths[indexToMigrate], JsonUtility.ToJson(save));
+                SaveMenuIcon.LoadSaveByPath(paths[indexToMigrate], true);
+                break;                
+
+
             case "Beta 1.0.0":
                 int presetNum = 0;
                 if (WCWorldIO.PRESET_DIRECTORY == null) WCWorldIO.PRESET_DIRECTORY = System.IO.Path.Combine(Application.persistentDataPath, "PresetBlueprints");
@@ -389,12 +423,17 @@ public class SaveMenuHandler : GUIWindowScripts
 
     public void DeleteSave()
     {
+        DeleteSaveAtIndex(indexToDelete);
+        deletePrompt.ToggleActive();
+    }
+
+    public void DeleteSaveAtIndex(int indexToDelete)
+    {
         saves.RemoveAt(indexToDelete);
         File.Delete(paths[indexToDelete]);
         paths.RemoveAt(indexToDelete);
         Destroy(icons[indexToDelete].gameObject);
         icons.RemoveAt(indexToDelete);
-        deletePrompt.ToggleActive();
         for (int i = 0; i < icons.Count; i++)
         {
             icons[i].index = i;
@@ -404,13 +443,29 @@ public class SaveMenuHandler : GUIWindowScripts
     public void AddSave()
     {
         string name = inputField.text.Trim();
-        string path = System.IO.Path.Combine(Application.persistentDataPath, "Saves", name);
-        inputField.transform.parent.GetComponentInChildren<GUIWindowScripts>().ToggleActive();
-        if (name == "" || name == "TestSave" ||
-            paths.Contains(path) || name.IndexOfAny(System.IO.Path.GetInvalidFileNameChars()) > -1)
+        if (name == "") 
         {
+            inputFeedback.text = "The save name can't be empty.";
             return;
         }
+        if (name == "TestSave")
+        {
+            inputFeedback.text = "The name \"TestSave\" is reserved for world creator functionality.";
+            return;
+        }
+        if (name.IndexOfAny(System.IO.Path.GetInvalidFileNameChars()) > -1)
+        {
+            inputFeedback.text = "The save name contains invalid characters.";
+            return;
+        }
+        string path = System.IO.Path.Combine(Application.persistentDataPath, "Saves", name);
+        if (paths.Contains(path))
+        {
+            inputFeedback.text = "The save name already exists.";
+            return;
+        }
+
+        inputField.transform.parent.GetComponentInChildren<GUIWindowScripts>().ToggleActive();
 
         var save = CreateSave(name, null, this.resourcePath);
 

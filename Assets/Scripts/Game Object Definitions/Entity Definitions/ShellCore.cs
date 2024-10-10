@@ -9,7 +9,7 @@ using static MasterNetworkAdapter;
 /// </summary>
 public class ShellCore : AirCraft, IHarvester, IOwner
 {
-    public delegate void PowerCollectDelegate(int faction, int amount);
+    public delegate void PowerCollectDelegate(Entity ent, int amount);
 
     public static PowerCollectDelegate OnPowerCollected;
 
@@ -46,6 +46,17 @@ public class ShellCore : AirCraft, IHarvester, IOwner
     private IEnumerator StartYardRepair()
     {
         isYardRepairing = true;
+        foreach (var ab in abilities)
+        {
+            ab.gasBoosted = false;
+        }
+
+        if (this is PlayerCore)
+        {
+            AbilityHandler.instance.ReflectGasBoost();
+        }
+
+
         foreach (var part in parts)
         {
             if (part.name != "Shell Sprite")
@@ -109,6 +120,8 @@ public class ShellCore : AirCraft, IHarvester, IOwner
         ActivatePassives();
         HealToMax();
         UpdateColliders();
+        CalculatePhysicsConstants();
+
         isYardRepairing = false;
     }
 
@@ -124,14 +137,15 @@ public class ShellCore : AirCraft, IHarvester, IOwner
 
     public ICarrier GetCarrier()
     {
-        if (!SectorManager.instance || SectorManager.instance.current.type != Sector.SectorType.BattleZone)
+        if (!SectorManager.instance || SectorManager.instance.GetCurrentType() != Sector.SectorType.BattleZone)
         {
             return null;
         }
 
-        if ((carrier == null || carrier.Equals(null) || carrier.GetIsDead()) && SectorManager.instance.carriers.ContainsKey(faction))
+        var facID = FactionManager.GetDistinguishingInteger(faction);
+        if ((carrier == null || carrier.Equals(null) || carrier.GetIsDead()) && SectorManager.instance.carriers.ContainsKey(facID))
         {
-            carrier = SectorManager.instance.carriers[faction];
+            carrier = SectorManager.instance.carriers[facID];
             if (carrier == null || carrier.Equals(null) || carrier.GetIsDead())
             {
                 carrier = null;
@@ -139,6 +153,25 @@ public class ShellCore : AirCraft, IHarvester, IOwner
         }
 
         return carrier;
+    }
+
+    public override void SetOverrideFaction(int overrideFac)
+    {
+        var tractorEntity = GetTractorTarget() ? GetTractorTarget().GetComponentInChildren<Entity>() : null;
+        if (tractorEntity
+            && FactionManager.IsAllied(faction, tractorEntity.faction))
+        {
+            tractorEntity.faction.overrideFaction = overrideFac;
+        }
+
+        faction.overrideFaction = overrideFac;
+        foreach (var u in GetUnitsCommanding())
+        {
+            if (u is Entity ent)
+            {
+                ent.faction.overrideFaction = overrideFac;
+            }
+        }
     }
 
     public void ResetPower()
@@ -156,7 +189,7 @@ public class ShellCore : AirCraft, IHarvester, IOwner
         totalPower = Mathf.Min(5000, totalPower + power);
         if (power > 0 && OnPowerCollected != null)
         {
-            OnPowerCollected.Invoke(faction, Mathf.RoundToInt(power));
+            OnPowerCollected.Invoke(this, Mathf.RoundToInt(power));
         }
     }
 
@@ -184,6 +217,9 @@ public class ShellCore : AirCraft, IHarvester, IOwner
         return sectorMngr;
     }
 
+
+
+
     protected override void Start()
     {
         if ((carrier != null && !carrier.Equals(null)) && carrier.GetIsInitialized())
@@ -198,7 +234,7 @@ public class ShellCore : AirCraft, IHarvester, IOwner
         if (!husk)
             InitAI();
 
-        if (FactionManager.DoesFactionGrowRandomParts(faction) && addRandomPartsCoroutine == null)
+        if (FactionManager.DoesFactionGrowRandomParts(faction.factionID) && addRandomPartsCoroutine == null)
         {
             addRandomPartsCoroutine = StartCoroutine(AddRandomParts());
         }
@@ -218,6 +254,15 @@ public class ShellCore : AirCraft, IHarvester, IOwner
         }
 
         ai.allowRetreat = true;
+    }
+
+    public void RemoveAllParts()
+    {
+        while (parts.Count > 0)
+        {
+            if (parts[0].name == "Shell Sprite") return;
+            RemovePart(parts[0]);
+        }
     }
 
     protected override void OnDestroy()
@@ -260,7 +305,6 @@ public class ShellCore : AirCraft, IHarvester, IOwner
     protected override void Update()
     {
         base.Update();
-
         if (!SystemLoader.AllLoaded) return;
         // If got away from Yard while isYardRepairing, FinalizeRepair immediately.
         if (isYardRepairing)
@@ -272,7 +316,7 @@ public class ShellCore : AirCraft, IHarvester, IOwner
                 if (!(entity as Yard))
                     continue;
                 
-                if (!FactionManager.IsAllied(entity.faction, faction))
+                if (!FactionManager.IsAllied(entity.faction.factionID, faction.factionID))
                     continue;
                 
                 if ((entity.transform.position - transform.position).sqrMagnitude > Yard.YardProximitySquared)

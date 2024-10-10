@@ -22,6 +22,7 @@ public class SectorPropertyDisplay : MonoBehaviour
     public InputField colorG;
     public InputField colorB;
     public InputField waveSet;
+    public InputField gasVorticesCount;
     public GameObject bgSpawnInputFieldPrefab;
     public GameObject deleteButton;
     public GameObject insertBGSpawnsButton;
@@ -99,6 +100,7 @@ public class SectorPropertyDisplay : MonoBehaviour
         mirrorXButton.SetActive(notDefault);
         mirrorYButton.SetActive(notDefault);
         deleteButton.SetActive(notDefault);
+        gasVorticesCount.transform.parent.gameObject.SetActive(notDefault);
         if (shardCounts != null && shardCounts.Count > 0)
             shardCounts[0].transform.parent.gameObject.SetActive(notDefault);
     }
@@ -106,6 +108,12 @@ public class SectorPropertyDisplay : MonoBehaviour
     public void ReflectCurrentSector(bool xAxis)
     {
         WorldCreatorCursor.instance.SymmetryCopy(currentSector, xAxis);
+    }
+
+    public void DeleteCurrentSector()
+    {
+        WorldCreatorCursor.instance.DeleteSector(currentSector);
+        Hide();
     }
 
     public void DisplayProperties(Sector sector)
@@ -137,6 +145,7 @@ public class SectorPropertyDisplay : MonoBehaviour
 
 
         waveSet.text = sector.waveSetPath;
+        gasVorticesCount.text = currentSector.gasVortices.ToString();
 
         x.text = currentSector.bounds.x.ToString();
         y.text = currentSector.bounds.y.ToString();
@@ -242,7 +251,19 @@ public class SectorPropertyDisplay : MonoBehaviour
             return;
         }
 
-        currentSector.backgroundColor = new Color(float.Parse(colorR.text), float.Parse(colorG.text), float.Parse(colorB.text), 1);
+        if (colorR.text == "")
+            colorR.text = "0.0";
+        if (colorG.text == "")
+            colorG.text = "0.0";
+        if (colorB.text == "")
+            colorB.text = "0.0";
+
+        if (float.TryParse(colorR.text, out float r) 
+            && float.TryParse(colorG.text, out float g) 
+            && float.TryParse(colorB.text, out float b))
+        {
+            currentSector.backgroundColor = new Color(r, g, b, 1);
+        }
     }
 
     public void UpdateParticles()
@@ -274,7 +295,10 @@ public class SectorPropertyDisplay : MonoBehaviour
 
         for (int i = 0; i < shardCounts.Count; i++)
         {
-            currentSector.shardCountSet[i] = int.Parse(shardCounts[i].text);
+            if (shardCounts[i].text == "")
+                shardCounts[i].text = "0";
+            if (int.TryParse(shardCounts[i].text, out int count))
+                currentSector.shardCountSet[i] = count;
         }
     }
 
@@ -486,5 +510,18 @@ public class SectorPropertyDisplay : MonoBehaviour
         }
 
         currentSector.waveSetPath = waveSet.text;
+    }
+
+    public void UpdateGasVortices()
+    {
+        if (opening || editingDefaults)
+        {
+            return;
+        }
+        if (gasVorticesCount.text == "")
+            gasVorticesCount.text = "0";
+        if (int.TryParse(gasVorticesCount.text, out int gasVortices))
+            currentSector.gasVortices = gasVortices;
+
     }
 }

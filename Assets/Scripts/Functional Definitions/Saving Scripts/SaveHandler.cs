@@ -52,15 +52,8 @@ public class SaveHandler : MonoBehaviour
 
             player.cursave = save;
 
-            if (save.factions != null)
-                for (int i = 0; i < save.factions.Length; i++)
-                {
-                    FactionManager.SetFactionRelations(save.factions[i], save.relations[i]);
-                }
-
             SectorManager.instance.LoadSectorFile(save.resourcePath);
-            save.missions.RemoveAll(m => !taskManager.questCanvasPaths.Exists(p =>
-                System.IO.Path.GetFileNameWithoutExtension(p) == m.name));
+            CoreScriptsManager.canvasMissions = taskManager.questCanvasPaths;
             taskManager.Initialize(true); // Re-init
             DialogueSystem.InitCanvases();
 
@@ -165,8 +158,6 @@ public class SaveHandler : MonoBehaviour
                 relations.Add(FactionManager.GetFactionRelations(i));
             }
         }
-        playerSave.factions = factions.ToArray();
-        playerSave.relations = relations.ToArray();
 
 
         for (int i = 0; i < taskManager.traversers.Count; i++)
@@ -218,10 +209,10 @@ public class SaveHandler : MonoBehaviour
         File.WriteAllText(currentPath, saveJson);
     }
 
-    public void BackupSave()
+    public void BackupSave(string postfix = "")
     {
         string currentPath = File.ReadAllLines(System.IO.Path.Combine(Application.persistentDataPath, "CurrentSavePath"))[0];
-        string backupPath = currentPath + " - Backup";
+        string backupPath = currentPath + " - Backup" + postfix;
 
         PlayerSave saveCopy = JsonUtility.FromJson<PlayerSave>(JsonUtility.ToJson(save));
         UpdateSaveData(saveCopy);

@@ -39,99 +39,108 @@ public class ShipBuilderInventoryScript : ShipBuilderInventoryBase
 #endif
         }
 
-        var dwNotSelectionPhase = mode == BuilderMode.Workshop && !ShipBuilder.instance.GetDroneWorkshopSelectPhase();
-        var minCount = dwNotSelectionPhase ? -1 : ShipBuilder.instance.GetDronePartCount();
-        if (count > minCount)
+        var onlyNeedOne = mode != BuilderMode.Workshop || ShipBuilder.instance.GetDroneWorkshopSelectPhase();
+        var minCount = onlyNeedOne ? 1 : ShipBuilder.instance.GetDronePartCount();
+        if (count < minCount)
         {
-            if (mode == BuilderMode.Workshop)
+            return;
+        }
+
+        if (mode == BuilderMode.Workshop && ShipBuilder.instance.GetDroneWorkshopSelectPhase())
+        {
+            DroneWorkshopStartBuildPhase();
+            return;
+        }
+
+
+        var builderPart = InstantiatePart();
+        DecrementCount(false, !onlyNeedOne);
+        if (Input.GetKey(KeyCode.LeftShift))
+        {
+            if (mode == BuilderMode.Yard && cursor.builder.GetMode() == BuilderMode.Trader)
             {
-                if (ShipBuilder.instance.GetDroneWorkshopSelectPhase())
+                cursor.builder.DispatchPart(builderPart, ShipBuilder.TransferMode.Sell);
+                return;
+            }
+            else if (mode == BuilderMode.Trader)
+            {
+                cursor.buildCost += EntityBlueprint.GetPartValue(builderPart.info);
+                cursor.builder.DispatchPart(builderPart, ShipBuilder.TransferMode.Buy);
+                return;
+            }
+        }
+
+        SymmetryGrabPart(minCount, builderPart, !onlyNeedOne);
+    }
+
+    private void DroneWorkshopStartBuildPhase()
+    {
+        if (string.IsNullOrEmpty(part.playerGivenName))
+        {
+            ShipBuilder.instance.OpenNameWindow(this);
+        }
+        else
+        {
+            var spawnData = DroneUtilities.GetDroneSpawnDataByShorthand(part.secondaryData);
+            if (Input.GetKey(KeyCode.LeftControl))
+            {
+                var existingParts = SectorManager.TryGettingEntityBlueprint(spawnData.drone).parts;
+                var parts = DroneUtilities.GetDefaultBlueprint(spawnData.type).parts;
+                if (ShipBuilder.instance.ContainsParts(parts, existingParts))
                 {
-                    if (string.IsNullOrEmpty(part.playerGivenName))
-                    {
-                        ShipBuilder.instance.OpenNameWindow(this);
-                    }
-                    else
-                    {
-                        var spawnData = DroneUtilities.GetDroneSpawnDataByShorthand(part.secondaryData);
-                        if (Input.GetKey(KeyCode.LeftControl))
-                        {
-                            var existingParts = SectorManager.TryGettingEntityBlueprint(spawnData.drone).parts;
-                            var parts = DroneUtilities.GetDefaultBlueprint(spawnData.type).parts;
-                            if (ShipBuilder.instance.ContainsParts(parts, existingParts))
-                            {
-                                ShipBuilder.instance.SwapDroneParts(parts, existingParts, this, spawnData.type);
-                            }
-                        }
-                        else if (Input.GetKey(KeyCode.LeftShift))
-                        {
-                            var p = ShipBuilder.CullSpatialValues(part);
-                            p.secondaryData = DroneUtilities.GetDefaultSecondaryDataByType(spawnData.type);
-                            p.playerGivenName = "";
-                            var existingParts = SectorManager.TryGettingEntityBlueprint(spawnData.drone).parts;
-                            var defaultParts = DroneUtilities.GetDefaultBlueprint(spawnData.type).parts;
-                            if (
-                                ShipBuilder.instance.ContainsParts(new List<EntityBlueprint.PartInfo>() {p}) &&
-                                ShipBuilder.instance.ContainsParts(existingParts, defaultParts))
-                            {
-                                ShipBuilder.instance.SwapDroneParts(existingParts, defaultParts, this, spawnData.type, true);
-                            }
-                        }
-                        else 
-                            ShipBuilder.instance.InitializeDronePart(part);
-                    }
-                    return;
+                    ShipBuilder.instance.SwapDroneParts(parts, existingParts, this, spawnData.type);
                 }
             }
-
-
-            var builderPart = InstantiatePart();
-            DecrementCount(false, dwNotSelectionPhase);
-            if (Input.GetKey(KeyCode.LeftShift))
+            else if (Input.GetKey(KeyCode.LeftShift))
             {
-                if (mode == BuilderMode.Yard && cursor.builder.GetMode() == BuilderMode.Trader)
+                var p = ShipBuilder.CullSpatialValues(part);
+                p.secondaryData = DroneUtilities.GetDefaultSecondaryDataByType(spawnData.type);
+                p.playerGivenName = "";
+                var existingParts = SectorManager.TryGettingEntityBlueprint(spawnData.drone).parts;
+                var defaultParts = DroneUtilities.GetDefaultBlueprint(spawnData.type).parts;
+                if (
+                    ShipBuilder.instance.ContainsParts(new List<EntityBlueprint.PartInfo>() { p }) &&
+                    ShipBuilder.instance.ContainsParts(existingParts, defaultParts))
                 {
-                    cursor.builder.DispatchPart(builderPart, ShipBuilder.TransferMode.Sell);
-                    return;
-                }
-                else if (mode == BuilderMode.Trader)
-                {
-                    cursor.buildCost += EntityBlueprint.GetPartValue(builderPart.info);
-                    cursor.builder.DispatchPart(builderPart, ShipBuilder.TransferMode.Buy);
-                    return;
+                    ShipBuilder.instance.SwapDroneParts(existingParts, defaultParts, this, spawnData.type, true);
                 }
             }
+            else
+                ShipBuilder.instance.InitializeDronePart(part);
+        }
+    }
 
-            ShipBuilderPart symmetryPart = count > minCount && cursor.symmetryMode != ShipBuilderCursorScript.SymmetryMode.Off ? InstantiatePart() : null;
-            if (symmetryPart)
+    private void SymmetryGrabPart(int minCount, ShipBuilderPart builderPart, bool onlyNeedOne)
+    {
+        ShipBuilderPart symmetryPart = count >= minCount && cursor.symmetryMode != ShipBuilderCursorScript.SymmetryMode.Off ? InstantiatePart() : null;
+        if (symmetryPart)
+        {
+            //if(cursor.symmetryMode == ShipBuilderCursorScript.SymmetryMode.X)
+            symmetryPart.info.mirrored = !builderPart.info.mirrored;
+            if (cursor.symmetryMode == ShipBuilderCursorScript.SymmetryMode.Y)
             {
-                //if(cursor.symmetryMode == ShipBuilderCursorScript.SymmetryMode.X)
-                symmetryPart.info.mirrored = !builderPart.info.mirrored;
-                if (cursor.symmetryMode == ShipBuilderCursorScript.SymmetryMode.Y)
-                {
-                    symmetryPart.info.rotation = 180;
-                }
+                symmetryPart.info.rotation = 180;
             }
+        }
 
-            cursor.GrabPart(builderPart, symmetryPart);
-            if (symmetryPart)
-            {
-                DecrementCount(false, dwNotSelectionPhase);
-            }
+        cursor.GrabPart(builderPart, symmetryPart);
+        if (symmetryPart)
+        {
+            DecrementCount(false, onlyNeedOne);
+        }
 
+        cursor.buildValue += EntityBlueprint.GetPartValue(part);
+        if (symmetryPart)
+        {
             cursor.buildValue += EntityBlueprint.GetPartValue(part);
-            if (symmetryPart)
-            {
-                cursor.buildValue += EntityBlueprint.GetPartValue(part);
-            }
+        }
 
-            if (mode == BuilderMode.Trader)
+        if (mode == BuilderMode.Trader)
+        {
+            cursor.buildCost += EntityBlueprint.GetPartValue(part);
+            if (symmetryPart)
             {
                 cursor.buildCost += EntityBlueprint.GetPartValue(part);
-                if (symmetryPart)
-                {
-                    cursor.buildCost += EntityBlueprint.GetPartValue(part);
-                }
             }
         }
     }
@@ -151,10 +160,7 @@ public class ShipBuilderInventoryScript : ShipBuilderInventoryBase
     {
         if (obeyDroneCount)
         {
-            for (int i = 0; i < ShipBuilder.instance.GetDronePartCount(); i++)
-            {
-                count++;
-            }
+            count += ShipBuilder.instance.GetDronePartCount();
         }
         else count++;
     }
@@ -163,10 +169,7 @@ public class ShipBuilderInventoryScript : ShipBuilderInventoryBase
     {
         if (obeyDroneCount)
         {
-            for (int i = 0; i < ShipBuilder.instance.GetDronePartCount(); i++)
-            {
-                count--;
-            }
+            count -= ShipBuilder.instance.GetDronePartCount();
         }
         else count--;
         if (destroyIfZero && count <= 0)

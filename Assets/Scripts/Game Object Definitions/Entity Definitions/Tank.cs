@@ -64,6 +64,7 @@ public class Tank : GroundCraft, IOwnable
     protected override void Awake()
     {
         base.Awake();
+        isStandardTractorTarget = true;
         if (!AIData.tanks.Contains(this))
         {
             AIData.tanks.Add(this);
@@ -104,7 +105,7 @@ public class Tank : GroundCraft, IOwnable
         if (isOnGround && !isDead)
         {
             TargetManager.Enqueue(targeter);
-            if (!isDead && !draggable.dragging)
+            if (!isDead && !draggable.Dragging)
             {
                 foreach (var weapon in Weapons)
                 {
@@ -153,7 +154,7 @@ public class Tank : GroundCraft, IOwnable
         
         List<Vector2> flags = new List<Vector2>();
         foreach(Flag flag in AIData.flags){
-            if(flag.name == $"tankpickup{faction}"){
+            if(flag.name == $"tankpickup{faction.factionID}"){
                 flags.Add(flag.transform.position);
             }
         }
